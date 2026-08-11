@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+*.iml
+# Locally-stored verification documents must never end up in an image layer.
+data/
+.env
+*.env

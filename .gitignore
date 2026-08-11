@@ -1,0 +1,27 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+### Local secrets — never commit ###
+.env
+*.env
+src/main/resources/application-local.yml
+
+### Verification / evidence documents written by LocalStorageServiceImpl ###
+data/
+
+### IDE ###
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log

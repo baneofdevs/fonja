@@ -1,0 +1,54 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: fonja-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: fonja
+      MYSQL_USER: fonja
+      MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-changeme_root}
+    ports:
+      # Host port is configurable: a developer with a system MySQL already on
+      # 3306 sets MYSQL_HOST_PORT rather than stopping it. The app container
+      # always reaches MySQL on 3306 over the compose network regardless.
+      - "${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - fonja-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-changeme_root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fonja-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_USERNAME: fonja
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/fonja?useSSL=false&serverTimezone=UTC
+      # Signing key for the internal JWT. No default on purpose — compose fails
+      # loudly rather than starting the app with a guessable key.
+      FONJA_AUTH_JWT_SECRET: ${FONJA_AUTH_JWT_SECRET:?set FONJA_AUTH_JWT_SECRET in .env — see .env.example}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # TODO (Day 3): CyberPay base URL / credentials
+      STORAGE_LOCAL_BASE_PATH: /data/fonja-documents
+    ports:
+      - "8080:8080"
+    volumes:
+      # Local filesystem storage for verification/evidence documents (see StorageService).
+      # NOTE: this volume is single-host only — must migrate to Azure Blob before
+      # any multi-instance deployment. See technical spec, Open Decisions.
+      - fonja-documents:/data/fonja-documents
+
+volumes:
+  fonja-mysql-data:
+  fonja-documents:

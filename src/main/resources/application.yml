@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: fonja
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/fonja?useSSL=false&serverTimezone=UTC}
+    username: ${DB_USERNAME:fonja}
+    password: ${DB_PASSWORD:changeme}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate   # schema owned by Flyway, not Hibernate
+    show-sql: false
+    open-in-view: false    # no lazy loading in the view layer; services return DTOs
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  servlet:
+    multipart:
+      # Verification documents are IDs and scans, not video.
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope:
+              - openid
+              - email
+              - profile
+        # Apple is deliberately absent: its client secret is a JWT that expires
+        # (six months maximum), so adding it means adding secret generation and
+        # rotation, not just a client id. Google is the Day 1 provider.
+
+fonja:
+  auth:
+    # No default — the app refuses to start without it, on purpose. A fallback
+    # here would ship a signing key that is public in the repository.
+    jwt-secret: ${FONJA_AUTH_JWT_SECRET:}
+    jwt-ttl-seconds: ${FONJA_AUTH_JWT_TTL_SECONDS:43200}
+    jwt-issuer: fonja
+    # Unset: the login handler returns the token as JSON so the flow can be
+    # tested before a frontend exists. Set this to the frontend callback and it
+    # redirects with ?token=... instead.
+    login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
+
+  storage:
+    local:
+      # Placeholder implementation. Local disk is not durable across container
+      # restarts and is not shared between instances — must move to Azure Blob
+      # before any multi-instance deployment. See technical spec §6.
+      base-path: ${STORAGE_LOCAL_BASE_PATH:./data/fonja-documents}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    # The audit trail until the audit-central-service transport lands (Day 2).
+    com.fonja.audit: INFO
+
+# TODO (Day 3): CyberPay base URL / credentials
+# TODO (Day 2): audit-central-service connection (RabbitMQ audit.events exchange)
