@@ -9,11 +9,10 @@ import org.springframework.stereotype.Component;
 /**
  * Warns about configuration that is missing but not fatal.
  *
- * <p>The JWT signing key is handled differently — {@link SecurityConfig} refuses
- * to start without it, because running with a guessable key is worse than not
- * running. Google credentials are not in that category: without them the API
- * still works, only the sign-in handshake does not, so the app starts and says
- * so rather than blocking a developer working on another module.
+ * <p>The JWT signing key is handled differently — {@link SecurityConfig} refuses to start without
+ * it, because running with a guessable key is worse than not running. Google credentials are not in
+ * that category: without them the API still works, only the sign-in handshake does not, so the app
+ * starts and says so rather than blocking a developer working on another module.
  */
 @Component
 public class StartupConfigCheck {
@@ -24,16 +23,18 @@ public class StartupConfigCheck {
     private final String googleClientId;
 
     public StartupConfigCheck(
-            @Value("${spring.security.oauth2.client.registration.google.client-id}") String googleClientId) {
+            @Value("${spring.security.oauth2.client.registration.google.client-id}")
+                    String googleClientId) {
         this.googleClientId = googleClientId;
     }
 
     @PostConstruct
     void warnAboutIncompleteConfiguration() {
         if (UNCONFIGURED.equals(googleClientId)) {
-            log.warn("Google OAuth2 is not configured: GOOGLE_CLIENT_ID is unset. "
-                    + "/api/** still validates existing tokens, but /oauth2/authorization/google "
-                    + "will fail. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env to enable sign-in.");
+            log.warn(
+                    "Google OAuth2 is not configured: GOOGLE_CLIENT_ID is unset. "
+                            + "/api/** still validates existing tokens, but /oauth2/authorization/google "
+                            + "will fail. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env to enable sign-in.");
         }
     }
 }

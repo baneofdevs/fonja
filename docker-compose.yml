@@ -33,12 +33,22 @@ services:
     environment:
       DB_USERNAME: fonja
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/fonja?useSSL=false&serverTimezone=UTC
+      # allowPublicKeyRetrieval is required because MySQL 8 authenticates with
+      # caching_sha2_password: on a TLS-less connection the client must fetch the
+      # server's RSA public key to encrypt the password, and Connector/J refuses
+      # to do that unless asked. Safe here — the app and MySQL share a private
+      # compose network. In production, enable TLS (sslMode=REQUIRED) instead of
+      # carrying this flag forward; over an untrusted network it is MITM-able.
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/fonja?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC"
       # Signing key for the internal JWT. No default on purpose — compose fails
       # loudly rather than starting the app with a guessable key.
       FONJA_AUTH_JWT_SECRET: ${FONJA_AUTH_JWT_SECRET:?set FONJA_AUTH_JWT_SECRET in .env — see .env.example}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # The fallback must be repeated here, not just in application.yml: compose
+      # would otherwise pass these through as empty strings, and an empty env var
+      # beats a YAML default. Spring Boot rejects an empty client id outright, so
+      # that combination stops the app booting. `:-` covers unset and empty alike.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-google-client-id-not-configured}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-google-client-secret-not-configured}
       # TODO (Day 3): CyberPay base URL / credentials
       STORAGE_LOCAL_BASE_PATH: /data/fonja-documents
     ports:

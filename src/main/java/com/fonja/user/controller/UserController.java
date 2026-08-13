@@ -21,8 +21,8 @@ public class UserController {
     }
 
     /**
-     * The caller's own profile. There is deliberately no "get user by id"
-     * endpoint — public profiles are Phase 2 (technical spec §1.2).
+     * The caller's own profile. There is deliberately no "get user by id" endpoint — public
+     * profiles are Phase 2 (technical spec §1.2).
      */
     @GetMapping("/me")
     public CustomResponse<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {

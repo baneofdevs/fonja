@@ -8,6 +8,8 @@ import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -21,13 +23,10 @@ import org.springframework.web.util.UriComponentsBuilder;
 // `tools.jackson` — Jackson 2 is on the classpath only transitively and has no bean.
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.util.Locale;
-
 /**
- * The hand-off point between the provider's identity and ours: maps the
- * provider `sub` to an internal user (creating it on first login) and issues
- * the internal JWT that every subsequent {@code /api/**} call carries.
+ * The hand-off point between the provider's identity and ours: maps the provider `sub` to an
+ * internal user (creating it on first login) and issues the internal JWT that every subsequent
+ * {@code /api/**} call carries.
  */
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
@@ -39,8 +38,11 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final OAuth2Config authConfig;
     private final ObjectMapper objectMapper;
 
-    public OAuth2LoginSuccessHandler(UserService userService, JwtService jwtService,
-                                     OAuth2Config authConfig, ObjectMapper objectMapper) {
+    public OAuth2LoginSuccessHandler(
+            UserService userService,
+            JwtService jwtService,
+            OAuth2Config authConfig,
+            ObjectMapper objectMapper) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authConfig = authConfig;
@@ -48,28 +50,30 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     }
 
     @Override
-    public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
-                                        Authentication authentication) throws IOException {
+    public void onAuthenticationSuccess(
+            HttpServletRequest request, HttpServletResponse response, Authentication authentication)
+            throws IOException {
         OAuth2AuthenticationToken token = (OAuth2AuthenticationToken) authentication;
         OAuth2User principal = token.getPrincipal();
         AuthProvider provider = resolveProvider(token.getAuthorizedClientRegistrationId());
 
-        User user = userService.upsertFromOAuth2(
-                provider,
-                principal.getName(),                       // the `sub` claim
-                principal.getAttribute("email"),
-                principal.getAttribute("name")
-        );
+        User user =
+                userService.upsertFromOAuth2(
+                        provider,
+                        principal.getName(), // the `sub` claim
+                        principal.getAttribute("email"),
+                        principal.getAttribute("name"));
 
         String jwt = jwtService.issueToken(user);
         log.info("OAuth2 login succeeded for user id={} via provider={}", user.getId(), provider);
 
         String redirectUri = authConfig.getLoginSuccessRedirectUri();
         if (redirectUri != null && !redirectUri.isBlank()) {
-            response.sendRedirect(UriComponentsBuilder.fromUriString(redirectUri)
-                    .queryParam("token", jwt)
-                    .build()
-                    .toUriString());
+            response.sendRedirect(
+                    UriComponentsBuilder.fromUriString(redirectUri)
+                            .queryParam("token", jwt)
+                            .build()
+                            .toUriString());
             return;
         }
 
@@ -77,7 +81,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         // is testable end-to-end from a browser.
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getWriter(),
+        objectMapper.writeValue(
+                response.getWriter(),
                 CustomResponse.success(new LoginResponse(jwt, UserResponse.from(user))));
     }
 
@@ -85,6 +90,5 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         return AuthProvider.valueOf(registrationId.toUpperCase(Locale.ROOT));
     }
 
-    public record LoginResponse(String accessToken, UserResponse user) {
-    }
+    public record LoginResponse(String accessToken, UserResponse user) {}
 }

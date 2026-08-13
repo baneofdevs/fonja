@@ -3,7 +3,16 @@ spring:
     name: fonja
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/fonja?useSSL=false&serverTimezone=UTC}
+    # allowPublicKeyRetrieval: MySQL 8 uses caching_sha2_password, which needs the
+    # server's RSA public key to complete a first authentication without TLS.
+    # Development default only — production overrides SPRING_DATASOURCE_URL with
+    # sslMode=REQUIRED and drops this flag.
+    # MYSQL_HOST_PORT matches the host port the MySQL container is published on
+    # (docker-compose.yml), so a developer with a system MySQL already on 3306
+    # only has to set it in one place. The app container ignores this entirely:
+    # compose passes it an explicit SPRING_DATASOURCE_URL pointing at mysql:3306
+    # over the private network.
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:${MYSQL_HOST_PORT:3306}/fonja?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${DB_USERNAME:fonja}
     password: ${DB_PASSWORD:changeme}
 
@@ -28,8 +37,14 @@ spring:
       client:
         registration:
           google:
-            client-id: ${GOOGLE_CLIENT_ID:}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            # Placeholder rather than an empty string: Spring Boot rejects an
+            # empty client id at bean creation, which would stop the whole app
+            # from starting just because nobody had registered a Google client
+            # yet. With the placeholder the app runs, /api/** still validates
+            # tokens, and only the handshake itself fails — loudly, and with a
+            # WARN at startup from StartupConfigCheck.
+            client-id: ${GOOGLE_CLIENT_ID:google-client-id-not-configured}
+            client-secret: ${GOOGLE_CLIENT_SECRET:google-client-secret-not-configured}
             scope:
               - openid
               - email
@@ -67,10 +82,4 @@ management:
       probes:
         enabled: true
 
-logging:
-  level:
-    # The audit trail until the audit-central-service transport lands (Day 2).
-    com.fonja.audit: INFO
-
 # TODO (Day 3): CyberPay base URL / credentials
-# TODO (Day 2): audit-central-service connection (RabbitMQ audit.events exchange)

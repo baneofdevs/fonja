@@ -17,7 +17,7 @@ its `service` layer — never reach into another module's `repository` or
 | `ledger` | Append-only earnings records (no user-facing wallet) | Schema only (Day 2) |
 | `payout` | Withdrawal requests | Schema only (Day 3) |
 | `notification` | Push / email / SMS | Schema only |
-| `common` | Shared config, audit publisher, response wrapper | Built |
+| `common` | Shared config, security, response wrapper | Built |
 
 All seven modules' tables exist from V1–V7 because `ddl-auto: validate`
 validates the whole entity graph at boot — a missing table for any entity stops
@@ -27,8 +27,7 @@ the app starting, even one whose behaviour is not written yet.
 
 1. All CyberPay callbacks are idempotent on `gateway_reference`.
 2. `LedgerEntry` is append-only — no updates, ever. Balances are derived, not stored.
-3. Every ledger write and verification decision is audited via `AuditEventPublisher`.
-4. Donating requires only a registered account. Creating/publishing a campaign
+3. Donating requires only a registered account. Creating/publishing a campaign
    and withdrawing require verification — verification happens once, at Launch,
    not per transaction.
 
@@ -52,11 +51,6 @@ KYC/evidence documents go through `verification.service.StorageService`.
 Current implementation is local filesystem (`LocalStorageServiceImpl`) — this
 is explicitly a placeholder. Do not deploy to more than one app instance until
 this is migrated to Azure Blob Storage.
-
-`AuditEventPublisher` is the same shape of placeholder:
-`LoggingAuditEventPublisher` writes to the `com.fonja.audit` logger so the trail
-exists from day one, and Day 2 swaps in the audit-central-service transport
-without touching any caller.
 
 ## Getting started
 
