@@ -2,7 +2,6 @@ package com.fonja.payout.entity;
 
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-
 import java.time.Instant;
 
 @Entity

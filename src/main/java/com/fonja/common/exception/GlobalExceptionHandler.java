@@ -2,6 +2,7 @@ package com.fonja.common.exception;
 
 import com.fonja.common.response.CustomResponse;
 import com.fonja.common.response.ResponseCode;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -11,11 +12,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import java.util.stream.Collectors;
-
 /**
- * Maps exceptions to {@link CustomResponse} error codes so no handler ever
- * leaks a stack trace or a raw Spring error body to a client.
+ * Maps exceptions to {@link CustomResponse} error codes so no handler ever leaks a stack trace or a
+ * raw Spring error body to a client.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,24 +31,32 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<CustomResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-        String detail = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .collect(Collectors.joining("; "));
+    public ResponseEntity<CustomResponse<Void>> handleValidation(
+            MethodArgumentNotValidException ex) {
+        String detail =
+                ex.getBindingResult().getFieldErrors().stream()
+                        .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                        .collect(Collectors.joining("; "));
         return ResponseEntity.status(ResponseCode.VALIDATION_ERROR.getHttpStatus())
                 .body(CustomResponse.error(ResponseCode.VALIDATION_ERROR, detail));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<CustomResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+    public ResponseEntity<CustomResponse<Void>> handleUploadTooLarge(
+            MaxUploadSizeExceededException ex) {
         return ResponseEntity.status(ResponseCode.VALIDATION_ERROR.getHttpStatus())
-                .body(CustomResponse.error(ResponseCode.VALIDATION_ERROR, "Uploaded file exceeds the maximum allowed size"));
+                .body(
+                        CustomResponse.error(
+                                ResponseCode.VALIDATION_ERROR,
+                                "Uploaded file exceeds the maximum allowed size"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<CustomResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(ResponseCode.FORBIDDEN.getHttpStatus())
-                .body(CustomResponse.error(ResponseCode.FORBIDDEN, ResponseCode.FORBIDDEN.getMessage()));
+                .body(
+                        CustomResponse.error(
+                                ResponseCode.FORBIDDEN, ResponseCode.FORBIDDEN.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
@@ -57,6 +64,9 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception", ex);
         // Never surface the exception message here — it can carry internals.
         return ResponseEntity.status(ResponseCode.INTERNAL_ERROR.getHttpStatus())
-                .body(CustomResponse.error(ResponseCode.INTERNAL_ERROR, ResponseCode.INTERNAL_ERROR.getMessage()));
+                .body(
+                        CustomResponse.error(
+                                ResponseCode.INTERNAL_ERROR,
+                                ResponseCode.INTERNAL_ERROR.getMessage()));
     }
 }

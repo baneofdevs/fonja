@@ -2,9 +2,8 @@ package com.fonja.verification.entity;
 
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "verification_requests")
@@ -70,14 +69,13 @@ public class VerificationRequest {
     }
 
     /**
-     * A decision is final. Re-reviewing an already-decided request would let an
-     * approval be silently reversed, so the entity refuses it outright — a
-     * rejected creator submits a new request instead.
+     * A decision is final. Re-reviewing an already-decided request would let an approval be
+     * silently reversed, so the entity refuses it outright — a rejected creator submits a new
+     * request instead.
      */
     private void requirePending() {
         if (status != VerificationStatus.PENDING) {
-            throw new IllegalStateException(
-                    "Verification request " + id + " is already " + status);
+            throw new IllegalStateException("Verification request " + id + " is already " + status);
         }
     }
 

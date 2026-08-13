@@ -4,15 +4,14 @@ import com.fonja.donation.entity.Donation;
 import com.fonja.payout.entity.PayoutRequest;
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 /**
- * Append-only. No setters, no update timestamp — rows are never modified
- * after insert. Available balance is always derived by summing entries,
- * never stored as a mutable column. See technical spec, Money-Path Rigor.
+ * Append-only. No setters, no update timestamp — rows are never modified after insert. Available
+ * balance is always derived by summing entries, never stored as a mutable column. See technical
+ * spec, Money-Path Rigor.
  */
 @Entity
 @Table(name = "ledger_entries")

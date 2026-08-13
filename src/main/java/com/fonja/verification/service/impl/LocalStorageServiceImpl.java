@@ -3,12 +3,6 @@ package com.fonja.verification.service.impl;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
 import com.fonja.verification.service.StorageService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
@@ -16,12 +10,16 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
- * Local filesystem implementation — foundation-stage only.
- * NOTE: local disk is not durable across container restarts or multiple
- * app instances. Must migrate to Azure Blob before any multi-instance
- * or production deployment (see technical spec, Open Decisions).
+ * Local filesystem implementation — foundation-stage only. NOTE: local disk is not durable across
+ * container restarts or multiple app instances. Must migrate to Azure Blob before any
+ * multi-instance or production deployment (see technical spec, Open Decisions).
  */
 @Service
 public class LocalStorageServiceImpl implements StorageService {
@@ -47,7 +45,8 @@ public class LocalStorageServiceImpl implements StorageService {
             Files.createDirectories(target.getParent());
             Files.copy(content, target, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw new ApiException(ResponseCode.STORAGE_ERROR, "Could not store uploaded document", e);
+            throw new ApiException(
+                    ResponseCode.STORAGE_ERROR, "Could not store uploaded document", e);
         }
 
         String reference = relativeDir + "/" + storedName;
@@ -69,10 +68,9 @@ public class LocalStorageServiceImpl implements StorageService {
     }
 
     /**
-     * Resolves a reference and refuses anything that escapes the base directory.
-     * References come from our own database today, but this is the boundary
-     * where a traversal string would do damage, so it is checked here rather
-     * than trusted upstream.
+     * Resolves a reference and refuses anything that escapes the base directory. References come
+     * from our own database today, but this is the boundary where a traversal string would do
+     * damage, so it is checked here rather than trusted upstream.
      */
     private Path resolveWithinBase(String fileReference) {
         if (!StringUtils.hasText(fileReference)) {
@@ -85,10 +83,13 @@ public class LocalStorageServiceImpl implements StorageService {
         return resolved;
     }
 
-    /** Preserves the extension for content sniffing on admin download; drops anything suspicious. */
+    /**
+     * Preserves the extension for content sniffing on admin download; drops anything suspicious.
+     */
     private String extensionOf(String originalFilename) {
-        String extension = StringUtils.getFilenameExtension(
-                StringUtils.cleanPath(originalFilename == null ? "" : originalFilename));
+        String extension =
+                StringUtils.getFilenameExtension(
+                        StringUtils.cleanPath(originalFilename == null ? "" : originalFilename));
         if (extension == null || !extension.matches("[A-Za-z0-9]{1,10}")) {
             return "";
         }

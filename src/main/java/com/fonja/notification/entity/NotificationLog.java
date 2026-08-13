@@ -2,9 +2,8 @@ package com.fonja.notification.entity;
 
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "notification_logs")
