@@ -4,6 +4,9 @@ public enum CampaignLifecycleState {
     DRAFT,
     PENDING_REVIEW,
     ACTIVE,
-    CLOSED,
-    SUSPENDED // added only once fraud response tooling exists
+    COMPLETED, // ACTIVE -> COMPLETED: goal reached
+    CANCELLED, // ACTIVE -> CANCELLED: creator ended it early
+    EXPIRED, // ACTIVE -> EXPIRED: deadline passed unfunded
+    SUSPENDED // ACTIVE or PENDING_REVIEW -> SUSPENDED: fraud response
+
 }

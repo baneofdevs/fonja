@@ -9,6 +9,8 @@ public enum ResponseCode {
     UNAUTHORIZED("03", "Authentication required", HttpStatus.UNAUTHORIZED),
     FORBIDDEN("04", "Not permitted", HttpStatus.FORBIDDEN),
     CONFLICT("05", "Request conflicts with current state", HttpStatus.CONFLICT),
+    VERIFICATION_REQUIRED("06", "Creator verification required", HttpStatus.FORBIDDEN),
+
     STORAGE_ERROR("20", "Document storage failure", HttpStatus.INTERNAL_SERVER_ERROR),
     INTERNAL_ERROR("99", "Something went wrong", HttpStatus.INTERNAL_SERVER_ERROR);
 

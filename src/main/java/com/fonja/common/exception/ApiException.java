@@ -39,4 +39,8 @@ public class ApiException extends RuntimeException {
     public static ApiException forbidden(String message) {
         return new ApiException(ResponseCode.FORBIDDEN, message);
     }
+
+    public static ApiException verificationRequired(String message) {
+        return new ApiException(ResponseCode.VERIFICATION_REQUIRED, message);
+    }
 }

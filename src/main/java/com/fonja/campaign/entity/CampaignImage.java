@@ -24,5 +24,25 @@ public class CampaignImage {
         // JPA
     }
 
-    // TODO: constructor, getters/setters per team convention
+    public CampaignImage(Campaign campaign, String filePath, int sortOrder) {
+        this.campaign = campaign;
+        this.filePath = filePath;
+        this.sortOrder = sortOrder;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Campaign getCampaign() {
+        return campaign;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public int getSortOrder() {
+        return sortOrder;
+    }
 }
