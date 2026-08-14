@@ -62,6 +62,7 @@ public class SecurityConfig {
                         // Signature verification lands with the webhook itself on Day 3.
                         .requestMatchers("/api/v1/donations/webhook/**").permitAll()
                         .requestMatchers("/api/v1/verification/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/campaigns/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.decoder(jwtDecoder)
