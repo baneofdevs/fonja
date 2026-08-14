@@ -3,13 +3,12 @@ package com.fonja.user.dto;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.Role;
 import com.fonja.user.entity.User;
-
 import java.time.Instant;
 import java.util.Set;
 
 /**
- * Outbound view of a user. Deliberately excludes {@code authProviderSub} — it
- * is an authentication identifier and has no business being in an API body.
+ * Outbound view of a user. Deliberately excludes {@code authProviderSub} — it is an authentication
+ * identifier and has no business being in an API body.
  */
 public record UserResponse(
         Long id,
@@ -19,8 +18,7 @@ public record UserResponse(
         AuthProvider authProvider,
         Set<Role> roles,
         boolean verified,
-        Instant createdAt
-) {
+        Instant createdAt) {
 
     public static UserResponse from(User user) {
         return new UserResponse(
@@ -31,7 +29,6 @@ public record UserResponse(
                 user.getAuthProvider(),
                 user.getRoles(),
                 user.isVerified(),
-                user.getCreatedAt()
-        );
+                user.getCreatedAt());
     }
 }

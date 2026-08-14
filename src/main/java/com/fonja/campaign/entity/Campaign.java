@@ -10,6 +10,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "campaigns")
@@ -44,8 +46,7 @@ public class Campaign {
     @Column(nullable = false)
     private String country;
 
-    @Column
-    private String location;
+    @Column private String location;
 
     @Column(name = "goal_amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal goalAmount;

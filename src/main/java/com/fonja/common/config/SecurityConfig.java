@@ -3,6 +3,9 @@ package com.fonja.common.config;
 import com.fonja.common.security.JwtService;
 import com.fonja.common.security.OAuth2LoginSuccessHandler;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.nio.charset.StandardCharsets;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,18 +23,13 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-
 /**
  * Two chains, deliberately separate:
  *
  * <ul>
- *   <li>{@code /api/**} is stateless and authenticates with the internal JWT only.</li>
- *   <li>The OAuth2 handshake endpoints need a session to hold the authorization
- *       request between the redirect out and the callback back, so they cannot
- *       live under a stateless policy.</li>
+ *   <li>{@code /api/**} is stateless and authenticates with the internal JWT only.
+ *   <li>The OAuth2 handshake endpoints need a session to hold the authorization request between the
+ *       redirect out and the callback back, so they cannot live under a stateless policy.
  * </ul>
  */
 @Configuration
@@ -50,9 +48,9 @@ public class SecurityConfig {
 
     @Bean
     @Order(1)
-    public SecurityFilterChain apiFilterChain(HttpSecurity http, JwtDecoder jwtDecoder) throws Exception {
-        return http
-                .securityMatcher("/api/**")
+    public SecurityFilterChain apiFilterChain(HttpSecurity http, JwtDecoder jwtDecoder)
+            throws Exception {
+        return http.securityMatcher("/api/**")
                 // No browser session, no cookies, no CSRF surface: every /api call
                 // carries a bearer token instead.
                 .csrf(AbstractHttpConfigurer::disable)
@@ -72,19 +70,25 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain loginFilterChain(HttpSecurity http,
-                                                OAuth2LoginSuccessHandler successHandler) throws Exception {
-        return http
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**", "/oauth2/**", "/login/**", "/error").permitAll()
-                        .anyRequest().authenticated())
+    public SecurityFilterChain loginFilterChain(
+            HttpSecurity http, OAuth2LoginSuccessHandler successHandler) throws Exception {
+        return http.authorizeHttpRequests(
+                        auth ->
+                                auth.requestMatchers(
+                                                "/actuator/health/**",
+                                                "/oauth2/**",
+                                                "/login/**",
+                                                "/error")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .authenticated())
                 .oauth2Login(oauth2 -> oauth2.successHandler(successHandler))
                 .build();
     }
 
     /**
-     * Maps the {@code roles} claim onto {@code ROLE_*} authorities, which is
-     * what {@code hasRole("ADMIN")} above matches against.
+     * Maps the {@code roles} claim onto {@code ROLE_*} authorities, which is what {@code
+     * hasRole("ADMIN")} above matches against.
      */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
@@ -114,14 +118,19 @@ public class SecurityConfig {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException(
                     "fonja.auth.jwt-secret is not set. Set FONJA_AUTH_JWT_SECRET to a random value "
-                            + "of at least " + MIN_SECRET_BYTES + " bytes.");
+                            + "of at least "
+                            + MIN_SECRET_BYTES
+                            + " bytes.");
         }
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length < MIN_SECRET_BYTES) {
             // Refuse rather than silently pad: a short key is a weak key.
             throw new IllegalStateException(
-                    "fonja.auth.jwt-secret must be at least " + MIN_SECRET_BYTES
-                            + " bytes for HS256; got " + keyBytes.length + ".");
+                    "fonja.auth.jwt-secret must be at least "
+                            + MIN_SECRET_BYTES
+                            + " bytes for HS256; got "
+                            + keyBytes.length
+                            + ".");
         }
         return new SecretKeySpec(keyBytes, "HmacSHA256");
     }

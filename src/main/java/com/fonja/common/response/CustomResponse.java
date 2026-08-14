@@ -3,9 +3,9 @@ package com.fonja.common.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * Reuses audit-central's wrapper shape: flat {@code "00"}/{@code "SUCCESSFUL"}
- * on success, a code from {@link ResponseCode} otherwise. Every controller in
- * this service returns this type so clients only ever parse one envelope.
+ * Reuses audit-central's wrapper shape: flat {@code "00"}/{@code "SUCCESSFUL"} on success, a code
+ * from {@link ResponseCode} otherwise. Every controller in this service returns this type so
+ * clients only ever parse one envelope.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CustomResponse<T> {
@@ -25,7 +25,8 @@ public class CustomResponse<T> {
     }
 
     public static <T> CustomResponse<T> success(T data) {
-        return new CustomResponse<>(ResponseCode.SUCCESS.getCode(), ResponseCode.SUCCESS.getMessage(), data);
+        return new CustomResponse<>(
+                ResponseCode.SUCCESS.getCode(), ResponseCode.SUCCESS.getMessage(), data);
     }
 
     public static <T> CustomResponse<T> success(String message, T data) {

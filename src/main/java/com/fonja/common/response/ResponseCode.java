@@ -2,14 +2,8 @@ package com.fonja.common.response;
 
 import org.springframework.http.HttpStatus;
 
-/**
- * The error code catalogue. Codes are part of the client contract — add new
- * ones, never renumber existing ones.
- */
 public enum ResponseCode {
-
     SUCCESS("00", "SUCCESSFUL", HttpStatus.OK),
-
     VALIDATION_ERROR("01", "Request validation failed", HttpStatus.BAD_REQUEST),
     NOT_FOUND("02", "Resource not found", HttpStatus.NOT_FOUND),
     UNAUTHORIZED("03", "Authentication required", HttpStatus.UNAUTHORIZED),
@@ -18,7 +12,6 @@ public enum ResponseCode {
     VERIFICATION_REQUIRED("06", "Creator verification required", HttpStatus.FORBIDDEN),
 
     STORAGE_ERROR("20", "Document storage failure", HttpStatus.INTERNAL_SERVER_ERROR),
-
     INTERNAL_ERROR("99", "Something went wrong", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

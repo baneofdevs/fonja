@@ -3,10 +3,9 @@ package com.fonja.donation.entity;
 import com.fonja.campaign.entity.Campaign;
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "donations")

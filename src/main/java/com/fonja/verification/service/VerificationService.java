@@ -1,7 +1,5 @@
 package com.fonja.verification.service;
 
-import com.fonja.common.audit.AuditEvent;
-import com.fonja.common.audit.AuditEventPublisher;
 import com.fonja.common.exception.ApiException;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -10,6 +8,8 @@ import com.fonja.verification.dto.VerificationRequestResponse;
 import com.fonja.verification.entity.*;
 import com.fonja.verification.repository.VerificationDocumentRepository;
 import com.fonja.verification.repository.VerificationRequestRepository;
+import java.io.IOException;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -18,15 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-
 /**
- * The single creator-verification gate. Approval is what turns a donor into a
- * creator: it sets {@code verified} and grants {@code CREATOR} in one step, and
- * it happens once — future campaign Launches skip this entirely
- * (technical spec §4.2).
+ * The single creator-verification gate. Approval is what turns a donor into a creator: it sets
+ * {@code verified} and grants {@code CREATOR} in one step, and it happens once — future campaign
+ * Launches skip this entirely (technical spec §4.2).
  */
 @Service
 public class VerificationService {
@@ -37,18 +32,16 @@ public class VerificationService {
     private final VerificationDocumentRepository documentRepository;
     private final StorageService storageService;
     private final UserService userService;
-    private final AuditEventPublisher auditEventPublisher;
 
-    public VerificationService(VerificationRequestRepository requestRepository,
-                               VerificationDocumentRepository documentRepository,
-                               StorageService storageService,
-                               UserService userService,
-                               AuditEventPublisher auditEventPublisher) {
+    public VerificationService(
+            VerificationRequestRepository requestRepository,
+            VerificationDocumentRepository documentRepository,
+            StorageService storageService,
+            UserService userService) {
         this.requestRepository = requestRepository;
         this.documentRepository = documentRepository;
         this.storageService = storageService;
         this.userService = userService;
-        this.auditEventPublisher = auditEventPublisher;
     }
 
     @Transactional
@@ -58,30 +51,34 @@ public class VerificationService {
         if (user.isVerified()) {
             throw ApiException.conflict("You are already verified");
         }
-        requestRepository.findByUserIdAndStatus(userId, VerificationStatus.PENDING).ifPresent(existing -> {
-            throw ApiException.conflict(
-                    "Verification request " + existing.getId() + " is already awaiting review");
-        });
+        requestRepository
+                .findByUserIdAndStatus(userId, VerificationStatus.PENDING)
+                .ifPresent(
+                        existing -> {
+                            throw ApiException.conflict(
+                                    "Verification request "
+                                            + existing.getId()
+                                            + " is already awaiting review");
+                        });
 
         String registrationNumber = normaliseRegistrationNumber(command);
-        VerificationRequest request = requestRepository.save(
-                new VerificationRequest(user, command.type(), registrationNumber));
-
-        auditEventPublisher.publish(AuditEvent.of("VERIFICATION_SUBMITTED", "VerificationRequest",
-                request.getId(), userId, Map.of("type", command.type().name())));
+        VerificationRequest request =
+                requestRepository.save(
+                        new VerificationRequest(user, command.type(), registrationNumber));
 
         log.info("Verification request id={} submitted by user id={}", request.getId(), userId);
         return VerificationRequestResponse.from(request, List.of());
     }
 
     /**
-     * Business and NGO verification is against a registration number; individual
-     * verification is against a government ID document, so a registration number
-     * on an INDIVIDUAL request is meaningless and is dropped rather than stored.
+     * Business and NGO verification is against a registration number; individual verification is
+     * against a government ID document, so a registration number on an INDIVIDUAL request is
+     * meaningless and is dropped rather than stored.
      */
     private String normaliseRegistrationNumber(SubmitVerificationRequest command) {
-        boolean requiresRegistration = command.type() == VerificationType.BUSINESS
-                || command.type() == VerificationType.NGO;
+        boolean requiresRegistration =
+                command.type() == VerificationType.BUSINESS
+                        || command.type() == VerificationType.NGO;
         String value = command.registrationNumber();
 
         if (requiresRegistration) {
@@ -95,14 +92,16 @@ public class VerificationService {
     }
 
     @Transactional
-    public VerificationRequestResponse uploadDocument(Long userId, Long requestId, DocType docType, MultipartFile file) {
+    public VerificationRequestResponse uploadDocument(
+            Long userId, Long requestId, DocType docType, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("A document file is required");
         }
 
         VerificationRequest request = requireOwnedRequest(userId, requestId);
         if (!request.isPending()) {
-            throw ApiException.conflict("Verification request " + requestId + " has already been reviewed");
+            throw ApiException.conflict(
+                    "Verification request " + requestId + " has already been reviewed");
         }
 
         String fileReference;
@@ -114,23 +113,24 @@ public class VerificationService {
 
         documentRepository.save(new VerificationDocument(request, docType, fileReference));
 
-        // Reference, not filename — the original filename is user-controlled.
-        auditEventPublisher.publish(AuditEvent.of("VERIFICATION_DOCUMENT_UPLOADED", "VerificationRequest",
-                requestId, userId, Map.of("docType", docType.name())));
-
         return toResponse(request);
     }
 
     @Transactional(readOnly = true)
     public VerificationRequestResponse getLatestForUser(Long userId) {
-        VerificationRequest request = requestRepository.findFirstByUserIdOrderBySubmittedAtDesc(userId)
-                .orElseThrow(() -> ApiException.notFound("No verification request found"));
+        VerificationRequest request =
+                requestRepository
+                        .findFirstByUserIdOrderBySubmittedAtDesc(userId)
+                        .orElseThrow(() -> ApiException.notFound("No verification request found"));
         return toResponse(request);
     }
 
     @Transactional(readOnly = true)
-    public Page<VerificationRequestResponse> reviewQueue(VerificationStatus status, Pageable pageable) {
-        return requestRepository.findByStatusOrderBySubmittedAtAsc(status, pageable).map(this::toResponse);
+    public Page<VerificationRequestResponse> reviewQueue(
+            VerificationStatus status, Pageable pageable) {
+        return requestRepository
+                .findByStatusOrderBySubmittedAtAsc(status, pageable)
+                .map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -139,9 +139,9 @@ public class VerificationService {
     }
 
     /**
-     * Admin approval. Sets the request APPROVED and promotes the user in the
-     * same transaction — a half-applied approval would leave a user who has
-     * been told they are verified but cannot launch a campaign.
+     * Admin approval. Sets the request APPROVED and promotes the user in the same transaction — a
+     * half-applied approval would leave a user who has been told they are verified but cannot
+     * launch a campaign.
      */
     @Transactional
     public VerificationRequestResponse approve(Long adminUserId, Long requestId) {
@@ -150,9 +150,6 @@ public class VerificationService {
 
         transition(() -> request.approve(admin));
         userService.markVerified(request.getUser().getId());
-
-        auditEventPublisher.publish(AuditEvent.of("VERIFICATION_APPROVED", "VerificationRequest",
-                requestId, adminUserId, Map.of("subjectUserId", request.getUser().getId())));
 
         log.info("Verification request id={} approved by admin id={}", requestId, adminUserId);
         return toResponse(request);
@@ -165,11 +162,6 @@ public class VerificationService {
 
         transition(() -> request.reject(admin, reason));
 
-        auditEventPublisher.publish(AuditEvent.of("VERIFICATION_REJECTED", "VerificationRequest",
-                requestId, adminUserId, Map.of(
-                        "subjectUserId", request.getUser().getId(),
-                        "reason", reason)));
-
         log.info("Verification request id={} rejected by admin id={}", requestId, adminUserId);
         return toResponse(request);
     }
@@ -177,14 +169,20 @@ public class VerificationService {
     /** Streams a stored document to an admin reviewer. */
     @Transactional(readOnly = true)
     public StoredDocument download(Long documentId) {
-        VerificationDocument document = documentRepository.findById(documentId)
-                .orElseThrow(() -> ApiException.notFound("Document " + documentId + " not found"));
-        return new StoredDocument(document.getDocType(), storageService.retrieve(document.getFileReference()));
+        VerificationDocument document =
+                documentRepository
+                        .findById(documentId)
+                        .orElseThrow(
+                                () ->
+                                        ApiException.notFound(
+                                                "Document " + documentId + " not found"));
+        return new StoredDocument(
+                document.getDocType(), storageService.retrieve(document.getFileReference()));
     }
 
     /**
-     * Turns the entity's own "already decided" guard into an API-level conflict.
-     * Two admins opening the same queue item is ordinary, not exceptional.
+     * Turns the entity's own "already decided" guard into an API-level conflict. Two admins opening
+     * the same queue item is ordinary, not exceptional.
      */
     private void transition(Runnable transition) {
         try {
@@ -195,8 +193,12 @@ public class VerificationService {
     }
 
     private VerificationRequest requireRequest(Long requestId) {
-        return requestRepository.findById(requestId)
-                .orElseThrow(() -> ApiException.notFound("Verification request " + requestId + " not found"));
+        return requestRepository
+                .findById(requestId)
+                .orElseThrow(
+                        () ->
+                                ApiException.notFound(
+                                        "Verification request " + requestId + " not found"));
     }
 
     private VerificationRequest requireOwnedRequest(Long userId, Long requestId) {
@@ -210,11 +212,12 @@ public class VerificationService {
     }
 
     private VerificationRequestResponse toResponse(VerificationRequest request) {
-        return VerificationRequestResponse.from(request,
-                documentRepository.findByVerificationRequestIdOrderByUploadedAtAsc(request.getId()));
+        return VerificationRequestResponse.from(
+                request,
+                documentRepository.findByVerificationRequestIdOrderByUploadedAtAsc(
+                        request.getId()));
     }
 
     /** A document's bytes plus the type an admin needs to interpret them. */
-    public record StoredDocument(DocType docType, java.io.InputStream content) {
-    }
+    public record StoredDocument(DocType docType, java.io.InputStream content) {}
 }

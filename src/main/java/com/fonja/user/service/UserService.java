@@ -12,8 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The only entry point into the {@code user} module. Other modules call this,
- * never {@link UserRepository} or {@link User} directly.
+ * The only entry point into the {@code user} module. Other modules call this, never {@link
+ * UserRepository} or {@link User} directly.
  */
 @Service
 public class UserService {
@@ -27,14 +27,14 @@ public class UserService {
     }
 
     /**
-     * Resolves an OAuth2 login to a Fonja user, creating the account on first
-     * sign-in. Matching is on the provider `sub` first; a user who signed up
-     * with the same email under a different provider is a conflict rather than
-     * a silent account merge — linking identities is a deliberate feature, not
-     * something to fall into by accident.
+     * Resolves an OAuth2 login to a Fonja user, creating the account on first sign-in. Matching is
+     * on the provider `sub` first; a user who signed up with the same email under a different
+     * provider is a conflict rather than a silent account merge — linking identities is a
+     * deliberate feature, not something to fall into by accident.
      */
     @Transactional
-    public User upsertFromOAuth2(AuthProvider provider, String providerSub, String email, String fullName) {
+    public User upsertFromOAuth2(
+            AuthProvider provider, String providerSub, String email, String fullName) {
         if (providerSub == null || providerSub.isBlank()) {
             throw ApiException.badRequest("OAuth2 provider returned no subject identifier");
         }
@@ -42,7 +42,8 @@ public class UserService {
             throw ApiException.badRequest("OAuth2 provider returned no email address");
         }
 
-        return userRepository.findByAuthProviderAndAuthProviderSub(provider, providerSub)
+        return userRepository
+                .findByAuthProviderAndAuthProviderSub(provider, providerSub)
                 .map(existing -> refreshProfile(existing, email, fullName))
                 .orElseGet(() -> createFromOAuth2(provider, providerSub, email, fullName));
     }
@@ -58,18 +59,24 @@ public class UserService {
         return user;
     }
 
-    private User createFromOAuth2(AuthProvider provider, String providerSub, String email, String fullName) {
-        userRepository.findByEmail(email).ifPresent(existing -> {
-            throw ApiException.conflict(
-                    "An account with this email already exists via " + existing.getAuthProvider()
-                            + ". Sign in with that provider instead.");
-        });
+    private User createFromOAuth2(
+            AuthProvider provider, String providerSub, String email, String fullName) {
+        userRepository
+                .findByEmail(email)
+                .ifPresent(
+                        existing -> {
+                            throw ApiException.conflict(
+                                    "An account with this email already exists via "
+                                            + existing.getAuthProvider()
+                                            + ". Sign in with that provider instead.");
+                        });
 
         // Some providers omit the name claim; fall back to the local part of the
         // email rather than persisting a null into a NOT NULL column.
-        String resolvedName = (fullName == null || fullName.isBlank())
-                ? email.substring(0, email.indexOf('@'))
-                : fullName;
+        String resolvedName =
+                (fullName == null || fullName.isBlank())
+                        ? email.substring(0, email.indexOf('@'))
+                        : fullName;
 
         User created = userRepository.save(new User(email, resolvedName, provider, providerSub));
         log.info("Created user id={} via provider={}", created.getId(), provider);
@@ -78,7 +85,8 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public User requireById(Long userId) {
-        return userRepository.findById(userId)
+        return userRepository
+                .findById(userId)
                 .orElseThrow(() -> ApiException.notFound("User " + userId + " not found"));
     }
 
@@ -88,9 +96,8 @@ public class UserService {
     }
 
     /**
-     * Called by the verification module when an admin approves a request. Sets
-     * {@code verified} and grants {@link Role#CREATOR} together — the two are
-     * never allowed to drift apart.
+     * Called by the verification module when an admin approves a request. Sets {@code verified} and
+     * grants {@link Role#CREATOR} together — the two are never allowed to drift apart.
      */
     @Transactional
     public void markVerified(Long userId) {

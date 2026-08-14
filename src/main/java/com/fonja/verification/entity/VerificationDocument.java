@@ -1,9 +1,8 @@
 package com.fonja.verification.entity;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "verification_documents")
@@ -34,7 +33,8 @@ public class VerificationDocument {
         // JPA
     }
 
-    public VerificationDocument(VerificationRequest verificationRequest, DocType docType, String fileReference) {
+    public VerificationDocument(
+            VerificationRequest verificationRequest, DocType docType, String fileReference) {
         this.verificationRequest = verificationRequest;
         this.docType = docType;
         this.fileReference = fileReference;

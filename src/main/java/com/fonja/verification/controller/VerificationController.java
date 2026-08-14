@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Creator-facing endpoints live at the root; admin review lives under
- * {@code /admin}, which {@code SecurityConfig} restricts to {@code ROLE_ADMIN}.
+ * Creator-facing endpoints live at the root; admin review lives under {@code /admin}, which {@code
+ * SecurityConfig} restricts to {@code ROLE_ADMIN}.
  */
 @RestController
 @RequestMapping("/api/v1/verification")
@@ -38,24 +38,30 @@ public class VerificationController {
     }
 
     @PostMapping
-    public CustomResponse<VerificationRequestResponse> submit(@AuthenticationPrincipal Jwt jwt,
-                                                              @Valid @RequestBody SubmitVerificationRequest request) {
-        return CustomResponse.success("Verification request submitted",
+    public CustomResponse<VerificationRequestResponse> submit(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody SubmitVerificationRequest request) {
+        return CustomResponse.success(
+                "Verification request submitted",
                 verificationService.submit(JwtService.userIdFrom(jwt), request));
     }
 
     @GetMapping("/me")
     public CustomResponse<VerificationRequestResponse> myLatest(@AuthenticationPrincipal Jwt jwt) {
-        return CustomResponse.success(verificationService.getLatestForUser(JwtService.userIdFrom(jwt)));
+        return CustomResponse.success(
+                verificationService.getLatestForUser(JwtService.userIdFrom(jwt)));
     }
 
     @PostMapping(value = "/{requestId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public CustomResponse<VerificationRequestResponse> uploadDocument(@AuthenticationPrincipal Jwt jwt,
-                                                                      @PathVariable Long requestId,
-                                                                      @RequestParam DocType docType,
-                                                                      @RequestPart("file") MultipartFile file) {
-        return CustomResponse.success("Document uploaded",
-                verificationService.uploadDocument(JwtService.userIdFrom(jwt), requestId, docType, file));
+    public CustomResponse<VerificationRequestResponse> uploadDocument(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long requestId,
+            @RequestParam DocType docType,
+            @RequestPart("file") MultipartFile file) {
+        return CustomResponse.success(
+                "Document uploaded",
+                verificationService.uploadDocument(
+                        JwtService.userIdFrom(jwt), requestId, docType, file));
     }
 
     @GetMapping("/admin/requests")
@@ -63,7 +69,8 @@ public class VerificationController {
             @RequestParam(defaultValue = "PENDING") VerificationStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), MAX_PAGE_SIZE));
+        Pageable pageable =
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), MAX_PAGE_SIZE));
         return CustomResponse.success(verificationService.reviewQueue(status, pageable));
     }
 
@@ -73,32 +80,40 @@ public class VerificationController {
     }
 
     @PostMapping("/admin/requests/{requestId}/approve")
-    public CustomResponse<VerificationRequestResponse> approve(@AuthenticationPrincipal Jwt jwt,
-                                                               @PathVariable Long requestId) {
-        return CustomResponse.success("Verification approved",
+    public CustomResponse<VerificationRequestResponse> approve(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable Long requestId) {
+        return CustomResponse.success(
+                "Verification approved",
                 verificationService.approve(JwtService.userIdFrom(jwt), requestId));
     }
 
     @PostMapping("/admin/requests/{requestId}/reject")
-    public CustomResponse<VerificationRequestResponse> reject(@AuthenticationPrincipal Jwt jwt,
-                                                              @PathVariable Long requestId,
-                                                              @Valid @RequestBody RejectVerificationRequest request) {
-        return CustomResponse.success("Verification rejected",
-                verificationService.reject(JwtService.userIdFrom(jwt), requestId, request.reason()));
+    public CustomResponse<VerificationRequestResponse> reject(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long requestId,
+            @Valid @RequestBody RejectVerificationRequest request) {
+        return CustomResponse.success(
+                "Verification rejected",
+                verificationService.reject(
+                        JwtService.userIdFrom(jwt), requestId, request.reason()));
     }
 
     /**
-     * Streams the raw document for review. Served as an attachment with an
-     * opaque filename so a KYC document is never rendered inline in the
-     * reviewer's browser.
+     * Streams the raw document for review. Served as an attachment with an opaque filename so a KYC
+     * document is never rendered inline in the reviewer's browser.
      */
     @GetMapping("/admin/documents/{documentId}")
     public ResponseEntity<InputStreamResource> downloadDocument(@PathVariable Long documentId) {
         VerificationService.StoredDocument document = verificationService.download(documentId);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + document.docType().name().toLowerCase() + "-" + documentId + "\"")
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\""
+                                + document.docType().name().toLowerCase()
+                                + "-"
+                                + documentId
+                                + "\"")
                 .body(new InputStreamResource(document.content()));
     }
 }
