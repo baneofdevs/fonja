@@ -1,24 +1,29 @@
 package com.fonja.campaign.service;
 
-import com.fonja.request.CreateCampaignRequest;
-import com.fonja.request.UpdateCampaignRequest;
-import com.fonja.campaign.response.CampaignResponse;
+import com.fonja.campaign.dto.CampaignResponse;
+import com.fonja.campaign.dto.CreateCampaignRequest;
+import com.fonja.campaign.dto.UpdateCampaignRequest;
 import com.fonja.campaign.entity.Campaign;
 import com.fonja.campaign.entity.CampaignImage;
 import com.fonja.campaign.entity.CampaignLifecycleState;
+import com.fonja.campaign.entity.IllegalCampaignStateException;
 import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
 import com.fonja.common.exception.ApiException;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
+import com.fonja.verification.entity.VerificationStatus;
+import com.fonja.verification.repository.VerificationRequestRepository;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 public class CampaignService {
@@ -27,12 +32,17 @@ public class CampaignService {
 
     private final CampaignRepository campaignRepository;
     private final CampaignImageRepository campaignImageRepository;
+    private final VerificationRequestRepository verificationRequestRepository;
     private final UserService userService;
 
-    public CampaignService(CampaignRepository campaignRepository, CampaignImageRepository campaignImageRepository,
-                            UserService userService) {
+    public CampaignService(
+            CampaignRepository campaignRepository,
+            CampaignImageRepository campaignImageRepository,
+            VerificationRequestRepository verificationRequestRepository,
+            UserService userService) {
         this.campaignRepository = campaignRepository;
         this.campaignImageRepository = campaignImageRepository;
+        this.verificationRequestRepository = verificationRequestRepository;
         this.userService = userService;
     }
 
@@ -41,50 +51,69 @@ public class CampaignService {
     public CampaignResponse createCampaign(Long userId, CreateCampaignRequest request) {
         User creator = userService.requireById(userId);
 
-        Campaign campaign = new Campaign(
-                creator,
-                request.title(),
-                request.story(),
-                request.category(),
-                request.beneficiaryType(),
-                request.country(),
-                request.location(),
-                request.goalAmount(),
-                request.currency(),
-                request.autoAdjustGoal(),
-                request.coverMediaPath()
-        );
+        Campaign campaign =
+                new Campaign(
+                        creator,
+                        request.title(),
+                        request.story(),
+                        request.category(),
+                        request.beneficiaryType(),
+                        request.country(),
+                        request.location(),
+                        request.goalAmount(),
+                        request.currency(),
+                        request.autoAdjustGoal(),
+                        request.coverMediaPath(),
+                        request.deadline());
 
         Campaign saved = campaignRepository.save(campaign);
         log.info("Campaign id={} created by user id={}", saved.getId(), userId);
-        return mapcampaignEntityToResponse(userId, saved);
+        return toResponse(saved);
     }
 
     // Lists a user's own campaigns, newest first. Cancelled (soft-deleted) campaigns are excluded.
     @Transactional(readOnly = true)
     public Page<CampaignResponse> getCampaignsForUser(Long userId, Pageable pageable) {
-        return campaignRepository.findByCreatorIdAndLifecycleStateNotOrderByCreatedAtDesc(
-                        userId, CampaignLifecycleState.CANCELLED, pageable)
-                .map(campaign -> mapcampaignEntityToResponse(userId, campaign));
+        return toResponsePage(
+                campaignRepository.findByCreatorIdAndLifecycleStateNotOrderByCreatedAtDesc(
+                        userId, CampaignLifecycleState.CANCELLED, pageable));
     }
 
-    // Gets one campaign by id. Owner-only for now; a cancelled (soft-deleted) campaign reads as not-found.
+    // Gets one campaign by id. Owner-only for now; a cancelled (soft-deleted) campaign reads as
+    // not-found.
     @Transactional(readOnly = true)
     public CampaignResponse getCampaignById(Long userId, Long campaignId) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
         if (campaign.getLifecycleState() == CampaignLifecycleState.CANCELLED) {
             throw ApiException.notFound("Campaign " + campaignId + " not found");
         }
-        return mapcampaignEntityToResponse(userId, campaign);
+        return toResponse(campaign);
     }
 
-    // Partially updates a campaign. Editable at any stage except after it's ended.
+    /**
+     * Partially updates a campaign.
+     *
+     * <p>Content fields stay editable until the campaign ends. The fundraising terms — goal,
+     * currency and deadline — are frozen once it leaves DRAFT: donations are recorded against a
+     * campaign's currency and counted towards its goal, so moving either after money starts
+     * arriving would silently rewrite what donors gave to.
+     */
     @Transactional
-    public CampaignResponse updateCampaign(Long userId, Long campaignId, UpdateCampaignRequest request) {
+    public CampaignResponse updateCampaign(
+            Long userId, Long campaignId, UpdateCampaignRequest request) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
 
-        if (hasEnded(campaign)) {
+        if (campaign.hasEnded()) {
             throw ApiException.conflict("Cannot update a campaign that has already ended");
+        }
+
+        boolean isDraft = campaign.getLifecycleState() == CampaignLifecycleState.DRAFT;
+        if (!isDraft
+                && (request.goalAmount() != null
+                        || request.currency() != null
+                        || request.deadline() != null)) {
+            throw ApiException.conflict(
+                    "Goal, currency and deadline can only be changed while the campaign is a draft");
         }
 
         if (request.title() != null) {
@@ -117,9 +146,12 @@ public class CampaignService {
         if (request.coverMediaPath() != null) {
             campaign.setCoverMediaPath(request.coverMediaPath());
         }
+        if (request.deadline() != null) {
+            campaign.setDeadline(request.deadline());
+        }
 
         log.info("Campaign id={} updated by user id={}", campaignId, userId);
-        return mapcampaignEntityToResponse(userId, campaign);
+        return toResponse(campaign);
     }
 
     // Adds an additional image to a campaign, appended after any existing ones.
@@ -127,15 +159,15 @@ public class CampaignService {
     public CampaignResponse addCampaignImage(Long userId, Long campaignId, String filePath) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
 
-        if (hasEnded(campaign)) {
+        if (campaign.hasEnded()) {
             throw ApiException.conflict("Cannot add an image to a campaign that has already ended");
         }
 
-        int nextSortOrder = campaignImageRepository.countByCampaignId(campaignId);
+        int nextSortOrder = campaignImageRepository.findMaxSortOrder(campaignId) + 1;
         campaignImageRepository.save(new CampaignImage(campaign, filePath, nextSortOrder));
 
         log.info("Image added to campaign id={} by user id={}", campaignId, userId);
-        return mapcampaignEntityToResponse(userId, campaign);
+        return toResponse(campaign);
     }
 
     // Removes an additional image from a campaign.
@@ -143,52 +175,76 @@ public class CampaignService {
     public CampaignResponse removeCampaignImage(Long userId, Long campaignId, Long imageId) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
 
-        if (hasEnded(campaign)) {
-            throw ApiException.conflict("Cannot remove an image from a campaign that has already ended");
+        if (campaign.hasEnded()) {
+            throw ApiException.conflict(
+                    "Cannot remove an image from a campaign that has already ended");
         }
 
-        CampaignImage image = campaignImageRepository.findById(imageId)
-                .orElseThrow(() -> ApiException.notFound("Image " + imageId + " not found"));
+        CampaignImage image =
+                campaignImageRepository
+                        .findById(imageId)
+                        .orElseThrow(
+                                () -> ApiException.notFound("Image " + imageId + " not found"));
         if (!image.getCampaign().getId().equals(campaignId)) {
             throw ApiException.notFound("Image " + imageId + " not found");
         }
         campaignImageRepository.delete(image);
 
-        log.info("Image id={} removed from campaign id={} by user id={}", imageId, campaignId, userId);
-        return mapcampaignEntityToResponse(userId, campaign);
+        log.info(
+                "Image id={} removed from campaign id={} by user id={}",
+                imageId,
+                campaignId,
+                userId);
+        return toResponse(campaign);
     }
 
-    // Creator submits a draft for admin review: DRAFT -> PENDING_REVIEW.
+    /**
+     * Creator submits a draft for admin review: DRAFT -> PENDING_REVIEW.
+     *
+     * <p>The Launch gate (technical spec §4.2, §4.3): an already-verified creator passes straight
+     * through. An unverified creator passes as soon as they have a verification request in flight —
+     * the campaign then queues for review while an admin works through their documents. Approval is
+     * still gated on {@code verified}, which {@link #readinessBlocker} enforces at review time, so
+     * nothing can go live on the strength of an unapproved submission.
+     */
     @Transactional
     public CampaignResponse submitForReview(Long userId, Long campaignId) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
 
-        if (!campaign.getCreator().isVerified()) {
-            throw ApiException.verificationRequired("Verify your identity to submit this campaign for review");
+        if (!campaign.getCreator().isVerified() && !hasVerificationInFlight(userId)) {
+            throw ApiException.verificationRequired(
+                    "Submit your identity verification to launch this campaign");
         }
 
         transition(campaign::submitForReview);
         log.info("Campaign id={} submitted for review by user id={}", campaignId, userId);
-        return mapcampaignEntityToResponse(campaign.getCreator().getId(), campaign);
+        return toResponse(campaign);
     }
 
     // Lists campaigns awaiting admin review, oldest submission first. Admin-only.
     @Transactional(readOnly = true)
     public Page<CampaignResponse> reviewQueue(Pageable pageable) {
-        return campaignRepository.findByLifecycleStateOrderBySubmittedAtAsc(CampaignLifecycleState.PENDING_REVIEW, pageable)
-                .map(campaign -> mapcampaignEntityToResponse(campaign.getCreator().getId(), campaign));
+        return toResponsePage(
+                campaignRepository.findByLifecycleStateOrderBySubmittedAtAsc(
+                        CampaignLifecycleState.PENDING_REVIEW, pageable));
     }
 
-    // Admin approves or rejects a pending campaign; an approval is auto-rejected if the campaign isn't actually ready.
+    // Admin approves or rejects a pending campaign; an approval is auto-rejected if the campaign
+    // isn't actually ready.
     @Transactional
-    public CampaignResponse reviewCampaign(Long adminUserId, Long campaignId, boolean approved, String rejectionReason) {
+    public CampaignResponse reviewCampaign(
+            Long adminUserId, Long campaignId, boolean approved, String rejectionReason) {
         Campaign campaign = findCampaignOrThrow(campaignId);
 
         if (approved) {
             String blocker = readinessBlocker(campaign);
             if (blocker != null) {
                 transition(() -> campaign.reject(blocker));
-                log.info("Campaign id={} auto-rejected on review by admin id={}: {}", campaignId, adminUserId, blocker);
+                log.info(
+                        "Campaign id={} auto-rejected on review by admin id={}: {}",
+                        campaignId,
+                        adminUserId,
+                        blocker);
             } else {
                 transition(campaign::activate);
             }
@@ -196,11 +252,21 @@ public class CampaignService {
             transition(() -> campaign.reject(rejectionReason));
         }
 
-        log.info("Campaign id={} reviewed by admin id={} approved={}", campaignId, adminUserId, approved);
-        return mapcampaignEntityToResponse(campaign.getCreator().getId(), campaign);
+        log.info(
+                "Campaign id={} reviewed by admin id={} approved={}",
+                campaignId,
+                adminUserId,
+                approved);
+        return toResponse(campaign);
     }
 
-    // Hard-deletes a draft; soft-deletes (cancels) anything already submitted or live.
+    /**
+     * Hard-deletes a draft; soft-deletes (cancels) anything already submitted or live.
+     *
+     * <p>TODO (Day 3, with the donation module): cancelling a campaign that has already taken
+     * donations needs a refund decision before it can be allowed. Today no donation can exist —
+     * {@code DonationService} is still a stub — so there is nothing to strand.
+     */
     @Transactional
     public void deleteCampaign(Long userId, Long campaignId) {
         Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
@@ -215,15 +281,52 @@ public class CampaignService {
         log.info("Campaign id={} soft-deleted (cancelled) by user id={}", campaignId, userId);
     }
 
-    // Maps a campaign entity to its response DTO.
-    public CampaignResponse mapcampaignEntityToResponse(Long userId, Campaign campaign) {
-        List<String> images = campaignImageRepository.findByCampaignIdOrderBySortOrderAsc(campaign.getId()).stream()
-                .map(CampaignImage::getFilePath)
-                .toList();
+    /** True when the creator has a verification request awaiting an admin decision. */
+    private boolean hasVerificationInFlight(Long userId) {
+        return verificationRequestRepository
+                .findByUserIdAndStatus(userId, VerificationStatus.PENDING)
+                .isPresent();
+    }
 
+    // Maps a campaign entity to its response DTO. creatorId always comes off the entity: deriving
+    // it
+    // from the calling user would report the viewer as the creator on any non-owner read path.
+    private CampaignResponse toResponse(Campaign campaign) {
+        List<String> images =
+                campaignImageRepository
+                        .findByCampaignIdOrderBySortOrderAsc(campaign.getId())
+                        .stream()
+                        .map(CampaignImage::getFilePath)
+                        .toList();
+        return toResponse(campaign, images);
+    }
+
+    // Page variant: one image query for the whole page rather than one per campaign.
+    private Page<CampaignResponse> toResponsePage(Page<Campaign> campaigns) {
+        List<Long> ids = campaigns.map(Campaign::getId).getContent();
+        if (ids.isEmpty()) {
+            return campaigns.map(campaign -> toResponse(campaign, List.of()));
+        }
+
+        Map<Long, List<String>> imagesByCampaign = new LinkedHashMap<>();
+        for (CampaignImage image :
+                campaignImageRepository.findByCampaignIdInOrderByCampaignIdAscSortOrderAsc(ids)) {
+            imagesByCampaign
+                    .computeIfAbsent(image.getCampaign().getId(), key -> new ArrayList<>())
+                    .add(image.getFilePath());
+        }
+
+        return campaigns.map(
+                campaign ->
+                        toResponse(
+                                campaign,
+                                imagesByCampaign.getOrDefault(campaign.getId(), List.of())));
+    }
+
+    private CampaignResponse toResponse(Campaign campaign, List<String> images) {
         return CampaignResponse.builder()
                 .id(campaign.getId())
-                .creatorId(userId)
+                .creatorId(campaign.getCreator().getId())
                 .title(campaign.getTitle())
                 .story(campaign.getStory())
                 .category(campaign.getCategory())
@@ -235,19 +338,13 @@ public class CampaignService {
                 .coverMediaPath(campaign.getCoverMediaPath())
                 .images(images)
                 .lifecycleState(campaign.getLifecycleState())
+                .rejectionReason(campaign.getRejectionReason())
+                .deadline(campaign.getDeadline())
                 .createdAt(campaign.getCreatedAt())
                 .updatedAt(campaign.getUpdatedAt())
                 .submittedAt(campaign.getSubmittedAt())
                 .approvedAt(campaign.getApprovedAt())
                 .build();
-    }
-
-    // True once a campaign is in a terminal state — nothing left to edit or delete.
-    private boolean hasEnded(Campaign campaign) {
-        CampaignLifecycleState state = campaign.getLifecycleState();
-        return state == CampaignLifecycleState.COMPLETED
-                || state == CampaignLifecycleState.CANCELLED
-                || state == CampaignLifecycleState.EXPIRED;
     }
 
     // Returns why a campaign isn't ready to go live, or null if it is.
@@ -266,7 +363,8 @@ public class CampaignService {
 
     // Finds a campaign by id, or throws not-found.
     private Campaign findCampaignOrThrow(Long campaignId) {
-        return campaignRepository.findById(campaignId)
+        return campaignRepository
+                .findById(campaignId)
                 .orElseThrow(() -> ApiException.notFound("Campaign " + campaignId + " not found"));
     }
 
@@ -274,17 +372,20 @@ public class CampaignService {
     private Campaign findOwnedCampaignOrThrow(Long userId, Long campaignId) {
         Campaign campaign = findCampaignOrThrow(campaignId);
         if (!campaign.getCreator().getId().equals(userId)) {
-            // Same response as a missing campaign — confirming someone else's campaign exists is itself a leak.
+            // Same response as a missing campaign — confirming someone else's campaign exists is
+            // itself a leak.
             throw ApiException.notFound("Campaign " + campaignId + " not found");
         }
         return campaign;
     }
 
-    // Runs a lifecycle transition, converting an illegal-state failure into a conflict response.
+    // Runs a lifecycle transition, converting an illegal-transition failure into a conflict
+    // response. Deliberately narrow: an unrelated IllegalStateException from inside the transition
+    // is a bug and should surface as a 500, not a 409.
     private void transition(Runnable transition) {
         try {
             transition.run();
-        } catch (IllegalStateException e) {
+        } catch (IllegalCampaignStateException e) {
             throw ApiException.conflict(e.getMessage());
         }
     }

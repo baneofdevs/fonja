@@ -34,7 +34,7 @@ One Spring Boot application, organized into bounded packages. Each module owns i
 fonja/
 ├── user/           — accounts, OAuth login, roles (donor / creator / admin)
 ├── verification/    — single creator-verification gate (individual / business / NGO)
-├── campaign/        — create, edit, feed, admin review, 4-state lifecycle
+├── campaign/        — create, edit, feed, admin review, campaign lifecycle
 ├── donation/        — donation initiation, CyberPay integration
 ├── ledger/          — append-only earnings records for every creator
 ├── payout/          — withdrawal requests against available earnings (no approval gate)
@@ -75,13 +75,47 @@ fonja/
 - Types: Individual (government ID + evidence), Business/NGO (registration number + evidence of activity). Document types requested are matched to the campaign's chosen category.
 - Documents uploaded via a `StorageService` interface — implemented today as local filesystem writes, swappable for Azure Blob later without touching the `verification` module itself. Only metadata (`file_path` / future `object_key`, `status`, `doc_type`) stored in MySQL, never file bytes.
 - Admin approves/rejects; approval sets `CREATOR` role + `verified = true`. Verification persists across future campaigns — an already-verified creator skips this step entirely on Launch.
+- A verification request in `PENDING` is enough to let a campaign queue for review (§4.3), but never enough to put one live.
 
 ### 4.3 `campaign`
 - Wizard steps 1–6 (destination/category, beneficiary, goal, media, story, title) require no auth and can be held client-side or as an unauthenticated draft.
 - Step 7 (sign-in) creates the `user` record if new; step 8 saves the campaign server-side as `draft`.
-- States: `draft → pending_review → active → closed` (+ `suspended`, added only when fraud tooling is built).
-- Hitting **Launch**: if creator is already `verified = true`, campaign moves straight to `pending_review`; if not, the user is routed into the `verification` flow first, and the campaign only moves to `pending_review` once that's submitted.
-- Feed surfaces `active` campaigns only.
+- States: `draft → pending_review → active`, then one of three terminal states.
+
+  ```
+  draft ──► pending_review ──► active ──► completed   (goal reached)
+    ▲            │               │
+    │            │               └─────► expired      (deadline passed unfunded)
+    └── reject ──┤               │
+                 └───────────────┴────► cancelled     (creator withdrew)
+  ```
+
+  A single `closed` state was the original v2 design. It was split during the Day 2 build because
+  the three ways a campaign ends are not interchangeable downstream: `completed` releases a payout,
+  `cancelled` may owe donors a refund, and `expired` does neither. `suspended` remains reserved for
+  fraud response and has no transition into it until that tooling is built.
+- Every transition is a guarded method on the `Campaign` entity — nothing assigns the state field
+  directly, so a campaign cannot reach a state it has no legal path to.
+- `deadline` is optional. Null means the campaign runs open-ended and never auto-expires; otherwise
+  an hourly sweep moves past-deadline `active` campaigns to `expired`. That sweep is an in-process
+  schedule with no shared lock — the same single-instance caveat as local file storage applies.
+- Hitting **Launch**: if the creator is already `verified = true`, the campaign moves straight to
+  `pending_review`. If not, it moves there as soon as they have a verification request in flight —
+  the campaign then queues for review while an admin works through their documents. Approval is
+  still gated on `verified = true`: an approval attempt on an unverified creator's campaign is
+  auto-rejected back to `draft` with the reason recorded, so an unapproved submission can never put
+  a campaign live.
+- Rejection always records a reason, returned to the creator so they know what to fix. Resubmitting
+  clears it.
+- The fundraising terms — `goal_amount`, `currency`, `deadline` — are editable only while the
+  campaign is a `draft`. Content (title, story, media, category, location) stays editable until the
+  campaign ends. Donations are recorded against a campaign's currency and counted towards its goal,
+  so moving either once money can arrive would rewrite what donors gave to.
+- Deleting a `draft` removes it; deleting anything further along soft-deletes it via `cancelled`.
+- Reads are owner-scoped: a campaign belonging to someone else answers 404 rather than 403, so the
+  API never confirms that another user's campaign exists.
+- Feed surfaces `active` campaigns only. **Not yet built** — the feed and the donor-facing single
+  campaign view are the remaining gap in this module.
 
 ### 4.4 `donation`
 - Donor-entered amount, no tiers, no cap check (any registered donor can donate).
@@ -151,7 +185,7 @@ fonja/
 - `verification` module: `StorageService` interface + local filesystem implementation, upload endpoint + metadata table (admin review UI can follow)
 
 **Day 2 — Campaign & Ledger**
-- `campaign` module: CRUD + feed endpoint (draft/pending_review/active states)
+- `campaign` module: CRUD, Launch gate, admin review queue, lifecycle (§4.3) — done; public feed endpoint still outstanding
 - `ledger` module: append-only schema, two-way split write path, available-earnings derivation query
 - `common`: audit event publisher wired to audit-central-service
 

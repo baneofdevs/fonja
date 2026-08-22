@@ -18,6 +18,7 @@ data/
 .classpath
 .project
 .settings/
+.claude/
 
 ### OS ###
 .DS_Store
