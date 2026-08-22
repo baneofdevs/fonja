@@ -59,15 +59,21 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         auth ->
                                 auth
-                                        // CyberPay posts here with a gateway signature, not a user
-                                        // token.
-                                        // Signature verification lands with the webhook itself on
-                                        // Day 3.
+                                        // CyberPay posts here with no user token. It also posts
+                                        // with no signature: their documentation defines no signing
+                                        // scheme at all, so this endpoint cannot authenticate its
+                                        // caller and must never act on the body it receives. The
+                                        // handler takes the transaction reference and re-queries
+                                        // CyberPay for the truth. See technical spec §5.
                                         .requestMatchers("/api/v1/donations/webhook/**")
                                         .permitAll()
-                                        .requestMatchers("/api/v1/verification/admin/**")
-                                        .hasRole("ADMIN")
-                                        .requestMatchers("/api/v1/campaigns/admin/**")
+                                        // One pattern rather than a rule per module: a new module's
+                                        // admin endpoints are protected the moment they are
+                                        // written,
+                                        // instead of falling through to merely-authenticated
+                                        // because
+                                        // someone forgot to come back here.
+                                        .requestMatchers("/api/v1/*/admin/**")
                                         .hasRole("ADMIN")
                                         .anyRequest()
                                         .authenticated())

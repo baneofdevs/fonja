@@ -50,7 +50,7 @@ the authorization request across the redirect.
 KYC/evidence documents go through `verification.service.StorageService`.
 Current implementation is local filesystem (`LocalStorageServiceImpl`) — this
 is explicitly a placeholder. Do not deploy to more than one app instance until
-this is migrated to Azure Blob Storage.
+this is migrated to object storage.
 
 ## Getting started
 

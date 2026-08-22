@@ -18,7 +18,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * Local filesystem implementation — foundation-stage only. NOTE: local disk is not durable across
- * container restarts or multiple app instances. Must migrate to Azure Blob before any
+ * container restarts or multiple app instances. Must migrate to object storage before any
  * multi-instance or production deployment (see technical spec, Open Decisions).
  */
 @Service

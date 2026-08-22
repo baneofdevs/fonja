@@ -52,12 +52,12 @@ fonja/
 |---|---|
 | Language/Framework | Java 17, Spring Boot |
 | Database | MySQL 8, single instance, schema-per-module discipline |
-| Object storage | **Local filesystem** for now — verification & evidence documents; abstracted behind an interface so migration to Azure Blob later doesn't touch calling code |
+| Object storage | **Local filesystem** for now — verification & evidence documents; abstracted behind an interface so migration to a cloud bucket later doesn't touch calling code |
 | Auth | OAuth2 (Google, Apple) via Spring Security OAuth2 Client; internal JWT after first login |
 | Payment gateway | **CyberPay** (internal — reuse existing response wrapper / webhook conventions where applicable) |
 | Containerization | Docker |
 | Source control / CI | **GitHub, GitHub Actions** |
-| Hosting | **Azure** |
+| Hosting | **Undecided — Azure ruled out.** GCP Cloud Run or DigitalOcean App Platform; see §8 |
 | Messaging | Deferred — introduced only if/when a module is extracted from the monolith |
 | Audit | Reuse existing audit-central-service; all payment/verification events published there |
 
@@ -73,7 +73,7 @@ fonja/
 ### 4.2 `verification`
 - Gate triggered at **Launch**, not at campaign creation — a user can build an entire draft campaign unauthenticated and unverified.
 - Types: Individual (government ID + evidence), Business/NGO (registration number + evidence of activity). Document types requested are matched to the campaign's chosen category.
-- Documents uploaded via a `StorageService` interface — implemented today as local filesystem writes, swappable for Azure Blob later without touching the `verification` module itself. Only metadata (`file_path` / future `object_key`, `status`, `doc_type`) stored in MySQL, never file bytes.
+- Documents uploaded via a `StorageService` interface — implemented today as local filesystem writes, swappable for a cloud bucket later without touching the `verification` module itself. Only metadata (`file_path` / future `object_key`, `status`, `doc_type`) stored in MySQL, never file bytes.
 - Admin approves/rejects; approval sets `CREATOR` role + `verified = true`. Verification persists across future campaigns — an already-verified creator skips this step entirely on Launch.
 - A verification request in `PENDING` is enough to let a campaign queue for review (§4.3), but never enough to put one live.
 
@@ -119,14 +119,43 @@ fonja/
 
 ### 4.4 `donation`
 - Donor-entered amount, no tiers, no cap check (any registered donor can donate).
-- Calls CyberPay, handles callback.
-- On confirmed payment, writes to the creator's earnings record via the `ledger` module — donation module holds no balance logic itself.
+- **No virtual accounts** — not per campaign, not per creator. Every donation is its own CyberPay
+  transaction, and all money settles into one Fonja business wallet. `POST /api/v1/payments` carries
+  a per-transaction `MerchantRef` and `WebhookUrl`, so attribution needs no dedicated account. A
+  permanent account number, by contrast, accepts money from anyone forever with any narration, which
+  creates a manual reconciliation queue that never goes away.
+- The flow: create the `PENDING` donation row (with `campaign_id` and our own reference) → initiate
+  with CyberPay → donor pays on their hosted checkout → webhook arrives → **re-query** →
+  `markSuccessful` → post to the `ledger`.
+- Campaign attribution is the `campaign_id` foreign key, never a reference-format convention.
+  Campaign progress is `SUM(amount) WHERE campaign_id = ? AND status = 'SUCCESS'`.
+- CyberPay's `Splits` (splitting the donation into per-creator wallets at collection time) is
+  deliberately **not** used at launch: it would move the balance of record to CyberPay, contradicting
+  §4.5 and §5, and would make refunds and fraud clawback permanently impossible. It stays available
+  as a later migration; the reverse migration is not possible.
+- Amounts cross the CyberPay boundary as integer **kobo**. Conversion happens in `CyberPayClient` and
+  nowhere else.
 
-### 4.5 `ledger`
+### 4.5 `ledger` — built
 - **Append-only**, source of truth for each creator's available earnings. No user-facing wallet — donor payments and creator payouts both pass straight through CyberPay; this module exists purely for accounting and audit.
 - Every donation: one entry crediting the creator's earnings record (93%), one entry recording Fonja's revenue (7%) — written atomically.
-- Every withdrawal: one entry debiting the creator's earnings record, minus the flat ₦200 fee.
+- The fee is rounded to two decimal places and the creator's share is then derived by **subtraction**,
+  so the two entries always reconcile against the gross exactly. Rounding both independently would
+  leak fractions of a naira on some amounts.
+- Every withdrawal: one entry debiting the creator's earnings record, plus one for the flat ₦200 fee.
+  Both are written when the withdrawal is **requested**, not when it settles, so a creator cannot
+  queue several withdrawals against the same balance. The beneficiary row is locked for the check, so
+  two simultaneous requests serialise instead of both passing.
+- A payout that fails at the gateway is released by a **compensating pair** (`WITHDRAWAL_REVERSAL`,
+  `WITHDRAWAL_FEE_REVERSAL`), never by deleting the original entries. Fonja does not keep the flat fee
+  on a failure.
 - Available balance is always derived by summing entries, never stored as a mutable column.
+- Direction (credit or debit) lives on `LedgerEntryType`, so amounts are always positive and a new
+  entry type is counted correctly the moment it is declared.
+- Unique indexes on `(donation_id, entry_type)` and `(payout_request_id, entry_type)` make a double
+  post impossible at the database level, not just unlikely.
+- **NGN only.** Entries carry no currency. A second donation currency makes every sum in this module
+  silently wrong — it needs a currency column and per-currency balances *before* that happens.
 
 ### 4.6 `payout`
 - Verified creator can request withdrawal against their available earnings **at any time — no per-withdrawal admin approval**, since verification already happened at creator onboarding.
@@ -149,13 +178,22 @@ fonja/
 2. **Ledger (earnings record) is append-only, double-entry style** — no `UPDATE` on a balance column, ever.
 3. **Every ledger write and verification decision is audited** via audit-central-service.
 4. **Donate ≠ Create.** Donating requires only a registered account. Creating and withdrawing requires verification — but withdrawing itself needs no additional per-transaction gate once verified.
+5. **Never act on a webhook body — re-query.** CyberPay's documentation defines no webhook signature
+   scheme (no HMAC, no signing header, no documented source IP range), and the payload shape is
+   public, so a forged "payment successful" is trivial to construct against an endpoint that must be
+   `permitAll`. Take only the transaction reference from the webhook, then call
+   `GET /api/v1/payments/{transactionReference}` server-to-server and trust that response —
+   CyberPay's own documentation states a transaction is successful *if and only if*
+   `data.status = Successful` on re-query. Treat the webhook as a doorbell, not a bank statement.
+   **Open:** ask CyberPay whether an undocumented signing header or a static IP range exists. Keep the
+   re-query either way.
 
 ---
 
 ## 6. Data Storage Split
 
 - **MySQL** — users, campaigns, donations, earnings/ledger entries, payout requests, verification metadata.
-- **Local filesystem** (for now) — verification and campaign evidence document files, behind a `StorageService` interface. MySQL never stores file bytes, only the path/key reference. **Caveat:** local disk isn't durable across container restarts or multiple app instances — fine for single-instance development and the initial foundation, but must move to Azure Blob before any multi-instance or production deployment where the disk could be wiped or isn't shared.
+- **Local filesystem** (for now) — verification and campaign evidence document files, behind a `StorageService` interface. MySQL never stores file bytes, only the path/key reference. **Caveat:** local disk isn't durable across container restarts or multiple app instances — fine for single-instance development and the initial foundation, but must move to object storage before any multi-instance or production deployment where the disk could be wiped or isn't shared. **Azure is ruled out**; the target bucket depends on the hosting decision in §8. Because `StorageService` is an interface, that decision changes one implementation class and nothing else.
 
 ---
 
@@ -169,10 +207,23 @@ fonja/
 
 ## 8. Open Decisions
 
-- [ ] Azure hosting target: App Service vs. AKS
+- [ ] **Hosting target — Azure is ruled out.** Shortlist: GCP Cloud Run + Cloud SQL + GCS, or
+      DigitalOcean App Platform + Managed MySQL + Spaces. Two code-level consequences either way:
+      an ephemeral container filesystem forces the `StorageService` migration below, and
+      `CampaignExpiryJob`'s `@Scheduled` sweep must be pinned to a single instance (or take a lock)
+      before the service scales past one replica.
 - [ ] Exact document types required per verification type (individual vs. business/NGO)
 - [ ] Platform fee split confirmation (7% / ₦200 — business-confirmed, not yet legally reviewed per BRD §19)
-- [ ] Timeline to migrate document storage from local filesystem to Azure Blob — must happen before any multi-instance deployment
+- [ ] Timeline to migrate document storage from local filesystem to object storage — must happen before any multi-instance deployment
+- [ ] **CyberPay webhook authentication** — does an undocumented signing header or a static source IP
+      range exist? See §5.5. The re-query defence stands regardless; this only decides whether it can
+      ever be skipped.
+- [ ] **Refunds.** Not currently specified. Whether Fonja ever needs to refund a donor or freeze a
+      fraudulent campaign's funds is what permanently rules `Splits` in or out (§4.4).
+- [ ] **BVN / NIN verification.** CyberPay exposes `POST /api/v1/bvn/verify` and `/api/v1/nin`. An
+      automated identity check is materially stronger than an admin eyeballing a photo, and would take
+      the admin out of the creator-onboarding path — worth deciding before the `verification` module
+      is finalised.
 
 ---
 
@@ -186,8 +237,9 @@ fonja/
 
 **Day 2 — Campaign & Ledger**
 - `campaign` module: CRUD, Launch gate, admin review queue, lifecycle (§4.3) — done; public feed endpoint still outstanding
-- `ledger` module: append-only schema, two-way split write path, available-earnings derivation query
-- `common`: audit event publisher wired to audit-central-service
+- `ledger` module: append-only schema, two-way split write path, available-earnings derivation query — **done**, plus withdrawal reserve/reversal and the `GET /api/v1/earnings` read
+- `common`: audit event publisher wired to audit-central-service — **not started.** The placeholder
+  stubs were removed rather than left looking implemented; §5.3 still requires this before launch.
 
 **Day 3 — Donation & Payout**
 - `donation` module: CyberPay integration, webhook handler with idempotency
