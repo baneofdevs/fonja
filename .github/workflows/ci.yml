@@ -1,0 +1,52 @@
+name: CI
+
+# Runs on every pull request, and on pushes to the long-lived branches so a
+# direct commit or a merge cannot land unverified either.
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+# A new push to the same branch makes the previous run irrelevant — cancel it
+# rather than paying for both.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and check formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          # Caches ~/.m2 keyed on pom.xml, so a run that changes no dependency
+          # skips redownloading the whole tree.
+          cache: maven
+
+      # `verify` is the whole gate: it compiles, runs every test, and runs
+      # spotless:check, which fails the build on a formatting violation. The
+      # tests are unit and MockMvc slices — no MySQL service container is
+      # needed, and adding one would only slow this down.
+      - name: Build and verify
+        run: ./mvnw -B --no-transfer-progress verify
+
+      # Surefire's XML is the only place a failure's stack trace survives once
+      # the runner is torn down, so keep it when something breaks.
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 7

@@ -1,13 +1,12 @@
 package com.fonja.user.entity;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "users")
@@ -23,8 +22,7 @@ public class User {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
-    @Column
-    private String phone;
+    @Column private String phone;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "auth_provider", nullable = false)
@@ -55,9 +53,9 @@ public class User {
     }
 
     /**
-     * Creates a user from an OAuth2 login. Everyone starts as a {@link Role#DONOR}:
-     * donating requires only a registered account, and {@link Role#CREATOR} is
-     * granted later by verification approval (technical spec §5.4).
+     * Creates a user from an OAuth2 login. Everyone starts as a {@link Role#DONOR}: donating
+     * requires only a registered account, and {@link Role#CREATOR} is granted later by verification
+     * approval (technical spec §5.4).
      */
     public User(String email, String fullName, AuthProvider authProvider, String authProviderSub) {
         this.email = email;
@@ -76,9 +74,9 @@ public class User {
     }
 
     /**
-     * Called only by the verification module on admin approval. Verification is
-     * one-time and permanent — an already-verified creator skips the gate on
-     * every future campaign Launch (technical spec §4.2).
+     * Called only by the verification module on admin approval. Verification is one-time and
+     * permanent — an already-verified creator skips the gate on every future campaign Launch
+     * (technical spec §4.2).
      */
     public void markVerified() {
         this.verified = true;

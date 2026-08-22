@@ -17,7 +17,7 @@ its `service` layer — never reach into another module's `repository` or
 | `ledger` | Append-only earnings records (no user-facing wallet) | Schema only (Day 2) |
 | `payout` | Withdrawal requests | Schema only (Day 3) |
 | `notification` | Push / email / SMS | Schema only |
-| `common` | Shared config, audit publisher, response wrapper | Built |
+| `common` | Shared config, security, response wrapper | Built |
 
 All seven modules' tables exist from V1–V7 because `ddl-auto: validate`
 validates the whole entity graph at boot — a missing table for any entity stops
@@ -27,8 +27,7 @@ the app starting, even one whose behaviour is not written yet.
 
 1. All CyberPay callbacks are idempotent on `gateway_reference`.
 2. `LedgerEntry` is append-only — no updates, ever. Balances are derived, not stored.
-3. Every ledger write and verification decision is audited via `AuditEventPublisher`.
-4. Donating requires only a registered account. Creating/publishing a campaign
+3. Donating requires only a registered account. Creating/publishing a campaign
    and withdrawing require verification — verification happens once, at Launch,
    not per transaction.
 
@@ -51,20 +50,23 @@ the authorization request across the redirect.
 KYC/evidence documents go through `verification.service.StorageService`.
 Current implementation is local filesystem (`LocalStorageServiceImpl`) — this
 is explicitly a placeholder. Do not deploy to more than one app instance until
-this is migrated to Azure Blob Storage.
-
-`AuditEventPublisher` is the same shape of placeholder:
-`LoggingAuditEventPublisher` writes to the `com.fonja.audit` logger so the trail
-exists from day one, and Day 2 swaps in the audit-central-service transport
-without touching any caller.
+this is migrated to object storage.
 
 ## Getting started
 
 ```
 cp .env.example .env          # then fill in FONJA_AUTH_JWT_SECRET (openssl rand -base64 48)
 docker compose up -d mysql    # MySQL only; set MYSQL_HOST_PORT if 3306 is taken
+
+set -a; . ./.env; set +a      # see below — Maven does not read .env on its own
 ./mvnw spring-boot:run
 ```
+
+Docker Compose loads `.env` automatically; Maven does not. Without that
+`set -a` line the app falls back to the defaults baked into `application.yml`
+— password `changeme` on port 3306 — and if you have a system MySQL on 3306 it
+will connect to *that* instead of the container and fail with
+`Access denied for user 'fonja'@'localhost' (using password: YES)`.
 
 Or run everything in containers with `docker compose up -d`.
 

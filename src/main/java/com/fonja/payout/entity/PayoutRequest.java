@@ -2,13 +2,14 @@ package com.fonja.payout.entity;
 
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Getter;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "payout_requests")
+@Getter
 public class PayoutRequest {
 
     @Id
@@ -45,5 +46,13 @@ public class PayoutRequest {
         // JPA
     }
 
-    // TODO: constructor, getters/setters per team convention
+    public PayoutRequest(User creator, BigDecimal amount, BigDecimal fee) {
+        this.creator = creator;
+        this.amount = amount;
+        this.fee = fee;
+        this.status = PayoutStatus.REQUESTED;
+    }
+
+    // TODO (payout module): status transitions and the CyberPay settlement call. The ledger already
+    // reserves the amount at REQUESTED and reverses it on FAILED — see LedgerService.
 }

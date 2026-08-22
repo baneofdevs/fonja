@@ -1,9 +1,8 @@
 package com.fonja.verification.entity;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.Instant;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "verification_documents")
@@ -21,7 +20,7 @@ public class VerificationDocument {
     @Column(name = "doc_type", nullable = false)
     private DocType docType;
 
-    // Local filesystem path today; becomes an object_key on Azure Blob migration.
+    // Local filesystem path today; becomes an object_key on the object-storage migration.
     // Column name kept generic so the migration doesn't require a rename.
     @Column(name = "file_reference", nullable = false)
     private String fileReference;
@@ -34,7 +33,8 @@ public class VerificationDocument {
         // JPA
     }
 
-    public VerificationDocument(VerificationRequest verificationRequest, DocType docType, String fileReference) {
+    public VerificationDocument(
+            VerificationRequest verificationRequest, DocType docType, String fileReference) {
         this.verificationRequest = verificationRequest;
         this.docType = docType;
         this.fileReference = fileReference;

@@ -3,13 +3,14 @@ package com.fonja.donation.entity;
 import com.fonja.campaign.entity.Campaign;
 import com.fonja.user.entity.User;
 import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Getter;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "donations")
+@Getter
 public class Donation {
 
     @Id
@@ -52,5 +53,37 @@ public class Donation {
         // JPA
     }
 
-    // TODO: constructor, getters/setters per team convention
+    /**
+     * A donation starts {@link DonationStatus#PENDING} — the row exists before CyberPay is called,
+     * so the reference we hand them is already recorded and the call itself is safe to retry.
+     */
+    public Donation(
+            Campaign campaign,
+            User donor,
+            BigDecimal amount,
+            String currency,
+            String gatewayReference) {
+        this.campaign = campaign;
+        this.donor = donor;
+        this.amount = amount;
+        this.currency = currency;
+        this.gatewayReference = gatewayReference;
+        this.status = DonationStatus.PENDING;
+    }
+
+    /**
+     * Confirms a payment. Only ever called after re-querying CyberPay — never from a webhook body,
+     * which carries no signature and so proves nothing. See technical spec §5.
+     */
+    public void markSuccessful(PaymentMethod paymentMethod) {
+        this.status = DonationStatus.SUCCESS;
+        this.paymentMethod = paymentMethod;
+    }
+
+    public void markFailed() {
+        this.status = DonationStatus.FAILED;
+    }
+
+    // TODO (donation module): split gatewayReference into our own merchant reference, generated
+    // before the CyberPay call, and theirs, filled in from the initiate response.
 }
