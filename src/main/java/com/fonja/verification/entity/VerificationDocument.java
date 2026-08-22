@@ -20,7 +20,7 @@ public class VerificationDocument {
     @Column(name = "doc_type", nullable = false)
     private DocType docType;
 
-    // Local filesystem path today; becomes an object_key on Azure Blob migration.
+    // Local filesystem path today; becomes an object_key on the object-storage migration.
     // Column name kept generic so the migration doesn't require a rename.
     @Column(name = "file_reference", nullable = false)
     private String fileReference;

@@ -65,10 +65,17 @@ fonja:
     # redirects with ?token=... instead.
     login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
 
+  ledger:
+    # Fonja's cut of every donation, and the flat fee on every withdrawal. Changing either affects
+    # only entries written afterwards — the ledger is append-only, so historical rows keep the split
+    # they were written with.
+    platform-fee-percent: ${FONJA_LEDGER_PLATFORM_FEE_PERCENT:7.00}
+    withdrawal-fee: ${FONJA_LEDGER_WITHDRAWAL_FEE:200.00}
+
   storage:
     local:
       # Placeholder implementation. Local disk is not durable across container
-      # restarts and is not shared between instances — must move to Azure Blob
+      # restarts and is not shared between instances — must move to object storage
       # before any multi-instance deployment. See technical spec §6.
       base-path: ${STORAGE_LOCAL_BASE_PATH:./data/fonja-documents}
 

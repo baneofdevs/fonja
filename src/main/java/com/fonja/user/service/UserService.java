@@ -90,6 +90,20 @@ public class UserService {
                 .orElseThrow(() -> ApiException.notFound("User " + userId + " not found"));
     }
 
+    /**
+     * As {@link #requireById}, but takes a row lock held until the caller's transaction ends.
+     *
+     * <p>For the ledger's withdrawal path only — see {@link UserRepository#findByIdForUpdate}. Must
+     * be called inside an existing transaction; on its own the lock is released immediately and
+     * buys nothing.
+     */
+    @Transactional
+    public User requireByIdForUpdate(Long userId) {
+        return userRepository
+                .findByIdForUpdate(userId)
+                .orElseThrow(() -> ApiException.notFound("User " + userId + " not found"));
+    }
+
     @Transactional(readOnly = true)
     public UserResponse getProfile(Long userId) {
         return UserResponse.from(requireById(userId));

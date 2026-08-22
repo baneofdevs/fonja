@@ -9,6 +9,8 @@ import com.fonja.verification.entity.*;
 import com.fonja.verification.repository.VerificationDocumentRepository;
 import com.fonja.verification.repository.VerificationRequestRepository;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,9 +106,13 @@ public class VerificationService {
                     "Verification request " + requestId + " has already been reviewed");
         }
 
+        DocumentFormat format = requireSupportedFormat(file);
+
         String fileReference;
         try (var content = file.getInputStream()) {
-            fileReference = storageService.store(file.getOriginalFilename(), content);
+            // Named from the detected format, not from the client's filename, so the stored
+            // extension can never disagree with the bytes behind it.
+            fileReference = storageService.store("document." + format.getExtension(), content);
         } catch (IOException e) {
             throw ApiException.badRequest("Could not read the uploaded file");
         }
@@ -114,6 +120,29 @@ public class VerificationService {
         documentRepository.save(new VerificationDocument(request, docType, fileReference));
 
         return toResponse(request);
+    }
+
+    /**
+     * Reads just the leading bytes to identify the file. An admin reviewer opens whatever is
+     * uploaded here, so the upload path is the place to refuse anything that is not a document —
+     * the size cap in {@code application.yml} is not by itself a content check.
+     */
+    private DocumentFormat requireSupportedFormat(MultipartFile file) {
+        byte[] header = new byte[DocumentFormat.HEADER_BYTES];
+        int read;
+        try (InputStream in = file.getInputStream()) {
+            read = in.readNBytes(header, 0, header.length);
+        } catch (IOException e) {
+            throw ApiException.badRequest("Could not read the uploaded file");
+        }
+
+        return DocumentFormat.detect(Arrays.copyOf(header, Math.max(read, 0)))
+                .orElseThrow(
+                        () ->
+                                ApiException.badRequest(
+                                        "Unsupported document format. Upload a "
+                                                + DocumentFormat.supportedList()
+                                                + "."));
     }
 
     @Transactional(readOnly = true)

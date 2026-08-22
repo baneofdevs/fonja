@@ -50,15 +50,23 @@ the authorization request across the redirect.
 KYC/evidence documents go through `verification.service.StorageService`.
 Current implementation is local filesystem (`LocalStorageServiceImpl`) — this
 is explicitly a placeholder. Do not deploy to more than one app instance until
-this is migrated to Azure Blob Storage.
+this is migrated to object storage.
 
 ## Getting started
 
 ```
 cp .env.example .env          # then fill in FONJA_AUTH_JWT_SECRET (openssl rand -base64 48)
 docker compose up -d mysql    # MySQL only; set MYSQL_HOST_PORT if 3306 is taken
+
+set -a; . ./.env; set +a      # see below — Maven does not read .env on its own
 ./mvnw spring-boot:run
 ```
+
+Docker Compose loads `.env` automatically; Maven does not. Without that
+`set -a` line the app falls back to the defaults baked into `application.yml`
+— password `changeme` on port 3306 — and if you have a system MySQL on 3306 it
+will connect to *that* instead of the container and fail with
+`Access denied for user 'fonja'@'localhost' (using password: YES)`.
 
 Or run everything in containers with `docker compose up -d`.
 
