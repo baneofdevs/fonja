@@ -72,6 +72,16 @@ fonja:
     platform-fee-percent: ${FONJA_LEDGER_PLATFORM_FEE_PERCENT:7.00}
     withdrawal-fee: ${FONJA_LEDGER_WITHDRAWAL_FEE:200.00}
 
+  cyberpay:
+    base-url: ${CYBERPAY_BASE_URL:https://payment-api.staging.cyberpay.ng}
+    # Also the webhook signing key — CyberPay HMAC-SHA512s each notification with it. No default:
+    # a blank key would "verify" signatures anyone could compute, so the webhook rejects every
+    # request (503) until this is set, and logs why.
+    integration-key: ${CYBERPAY_INTEGRATION_KEY:}
+    api-key: ${CYBERPAY_API_KEY:}
+    connect-timeout: ${CYBERPAY_CONNECT_TIMEOUT:5s}
+    read-timeout: ${CYBERPAY_READ_TIMEOUT:15s}
+
   storage:
     local:
       # Placeholder implementation. Local disk is not durable across container
@@ -88,5 +98,3 @@ management:
     health:
       probes:
         enabled: true
-
-# TODO (Day 3): CyberPay base URL / credentials

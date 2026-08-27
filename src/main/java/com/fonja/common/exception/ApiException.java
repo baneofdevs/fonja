@@ -43,4 +43,17 @@ public class ApiException extends RuntimeException {
     public static ApiException verificationRequired(String message) {
         return new ApiException(ResponseCode.VERIFICATION_REQUIRED, message);
     }
+
+    /**
+     * For callers that authenticate themselves rather than through Spring Security — currently only
+     * the CyberPay webhook, which proves who it is with a signature header.
+     */
+    public static ApiException unauthorized(String message) {
+        return new ApiException(ResponseCode.UNAUTHORIZED, message);
+    }
+
+    /** Signals "ask again later" — see {@link ResponseCode#GATEWAY_UNAVAILABLE}. */
+    public static ApiException gatewayUnavailable(String message) {
+        return new ApiException(ResponseCode.GATEWAY_UNAVAILABLE, message);
+    }
 }

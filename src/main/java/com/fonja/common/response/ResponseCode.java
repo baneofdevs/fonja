@@ -12,6 +12,10 @@ public enum ResponseCode {
     VERIFICATION_REQUIRED("06", "Creator verification required", HttpStatus.FORBIDDEN),
 
     STORAGE_ERROR("20", "Document storage failure", HttpStatus.INTERNAL_SERVER_ERROR),
+    // 503 rather than 500 on purpose: this is the code the CyberPay webhook returns when it cannot
+    // yet reach a verdict, and any non-2xx makes CyberPay redeliver in an hour. "Come back later"
+    // is exactly what we mean.
+    GATEWAY_UNAVAILABLE("21", "Payment gateway unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     INTERNAL_ERROR("99", "Something went wrong", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

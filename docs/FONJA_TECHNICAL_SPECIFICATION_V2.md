@@ -178,15 +178,24 @@ fonja/
 2. **Ledger (earnings record) is append-only, double-entry style** — no `UPDATE` on a balance column, ever.
 3. **Every ledger write and verification decision is audited** via audit-central-service.
 4. **Donate ≠ Create.** Donating requires only a registered account. Creating and withdrawing requires verification — but withdrawing itself needs no additional per-transaction gate once verified.
-5. **Never act on a webhook body — re-query.** CyberPay's documentation defines no webhook signature
-   scheme (no HMAC, no signing header, no documented source IP range), and the payload shape is
-   public, so a forged "payment successful" is trivial to construct against an endpoint that must be
-   `permitAll`. Take only the transaction reference from the webhook, then call
-   `GET /api/v1/payments/{transactionReference}` server-to-server and trust that response —
+5. **Verify the webhook signature, then re-query anyway.** The endpoint is `permitAll` — Spring
+   Security cannot gate a caller that carries no user token — so the handler authenticates CyberPay
+   itself. CyberPay sends a `Cyberpay-Signature` header: the **HMAC-SHA512 hex digest of the raw
+   request body**, keyed with our **integration key**. Compute it over the raw bytes (bind the body
+   as `String`/`byte[]`, never a DTO — re-serializing changes the bytes and the digest will not
+   match) and compare with `MessageDigest.isEqual`, not `String.equals`.
+
+   A valid signature proves the message came from CyberPay. It does not prove the money settled, so
+   the handler still takes only the transaction reference and calls
+   `GET /api/v1/payments/{transactionReference}` server-to-server before writing to the ledger —
    CyberPay's own documentation states a transaction is successful *if and only if*
-   `data.status = Successful` on re-query. Treat the webhook as a doorbell, not a bank statement.
-   **Open:** ask CyberPay whether an undocumented signing header or a static IP range exists. Keep the
-   re-query either way.
+   `data.status = Successful` on re-query. The webhook is a doorbell; the re-query is the bank
+   statement.
+
+   **Idempotency is mandatory, not defensive.** CyberPay redelivers the same notification **every
+   hour for 72 hours** until it receives a `2xx` — roughly 72 duplicate deliveries for one payment.
+   The unique indexes in `V9__ledger_entry_uniqueness.sql` are what make that safe. Return `2xx`
+   before any slow work.
 
 ---
 
@@ -215,9 +224,10 @@ fonja/
 - [ ] Exact document types required per verification type (individual vs. business/NGO)
 - [ ] Platform fee split confirmation (7% / ₦200 — business-confirmed, not yet legally reviewed per BRD §19)
 - [ ] Timeline to migrate document storage from local filesystem to object storage — must happen before any multi-instance deployment
-- [ ] **CyberPay webhook authentication** — does an undocumented signing header or a static source IP
-      range exist? See §5.5. The re-query defence stands regardless; this only decides whether it can
-      ever be skipped.
+- [ ] **`TransactionDate` format.** The docs show `"8/7/2026 8:01:12 AM +01:00"`; a real captured
+      webhook showed `"2026-08-20T08:16:36.542604700"` with no offset. Parse both leniently, or ask
+      CyberPay which is authoritative and what timezone an offset-less value is in.
+      *(Resolved and closed: webhook authentication — see §5.5.)*
 - [ ] **Refunds.** Not currently specified. Whether Fonja ever needs to refund a donor or freeze a
       fraudulent campaign's funds is what permanently rules `Splits` in or out (§4.4).
 - [ ] **BVN / NIN verification.** CyberPay exposes `POST /api/v1/bvn/verify` and `/api/v1/nin`. An
@@ -242,7 +252,10 @@ fonja/
   stubs were removed rather than left looking implemented; §5.3 still requires this before launch.
 
 **Day 3 — Donation & Payout**
-- `donation` module: CyberPay integration, webhook handler with idempotency
+- `donation` module: **webhook handler done** — signature verification, re-query, ledger post, and
+  idempotency across CyberPay's 72 hours of hourly redeliveries (§5.5). Donation *initiation*
+  (`POST /api/v1/payments`, checkout redirect) is still outstanding and is blocked on staging
+  credentials.
 - `payout` module: withdrawal request → CyberPay/NIBSS settlement call (sandbox)
 - End-to-end smoke test: sign in → view feed → donate → earnings record updated → verified creator withdraws → audit log recorded
 

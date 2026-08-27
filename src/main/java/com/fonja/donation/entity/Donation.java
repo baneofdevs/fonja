@@ -72,8 +72,9 @@ public class Donation {
     }
 
     /**
-     * Confirms a payment. Only ever called after re-querying CyberPay — never from a webhook body,
-     * which carries no signature and so proves nothing. See technical spec §5.
+     * Confirms a payment. Only ever called after re-querying CyberPay. A signed webhook proves who
+     * sent the message, not that the money settled, so the notification alone never reaches here.
+     * See technical spec §5.5.
      */
     public void markSuccessful(PaymentMethod paymentMethod) {
         this.status = DonationStatus.SUCCESS;
