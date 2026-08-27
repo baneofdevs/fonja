@@ -36,9 +36,20 @@ public class Donation {
     @Column(name = "payment_method")
     private PaymentMethod paymentMethod;
 
-    // Idempotency key — unique constraint stops a webhook retry from
-    // double-processing the same CyberPay transaction.
-    @Column(name = "gateway_reference", nullable = false, unique = true)
+    /**
+     * Our own reference, generated before CyberPay is called and never changed. Sent as {@code
+     * MerchantRef} and echoed back on every webhook, which is what lets a payment be settled even
+     * if we never managed to store CyberPay's own reference.
+     */
+    @Column(name = "merchant_reference", nullable = false, unique = true, updatable = false)
+    private String merchantReference;
+
+    /**
+     * CyberPay's reference. Null until they answer the initiate call — the row has to exist before
+     * that call is made. Also the idempotency key: the unique constraint is what stops a webhook
+     * retry from double-processing the same transaction.
+     */
+    @Column(name = "gateway_reference", unique = true)
     private String gatewayReference;
 
     @Enumerated(EnumType.STRING)
@@ -54,21 +65,35 @@ public class Donation {
     }
 
     /**
-     * A donation starts {@link DonationStatus#PENDING} — the row exists before CyberPay is called,
-     * so the reference we hand them is already recorded and the call itself is safe to retry.
+     * A donation starts {@link DonationStatus#PENDING} carrying only our own reference — the row is
+     * committed before CyberPay is called, so a payment can never be initiated against nothing.
      */
     public Donation(
             Campaign campaign,
             User donor,
             BigDecimal amount,
             String currency,
-            String gatewayReference) {
+            String merchantReference) {
         this.campaign = campaign;
         this.donor = donor;
         this.amount = amount;
         this.currency = currency;
-        this.gatewayReference = gatewayReference;
+        this.merchantReference = merchantReference;
         this.status = DonationStatus.PENDING;
+    }
+
+    /**
+     * Records CyberPay's reference once they have issued one.
+     *
+     * <p>Write-once: re-initiating a payment that already has a reference would leave two live
+     * checkout sessions against one donation row, and only one of them could ever be settled.
+     */
+    public void attachGatewayReference(String gatewayReference) {
+        if (this.gatewayReference != null) {
+            throw new IllegalStateException(
+                    "Donation " + id + " already has gateway reference " + this.gatewayReference);
+        }
+        this.gatewayReference = gatewayReference;
     }
 
     /**
@@ -84,7 +109,4 @@ public class Donation {
     public void markFailed() {
         this.status = DonationStatus.FAILED;
     }
-
-    // TODO (donation module): split gatewayReference into our own merchant reference, generated
-    // before the CyberPay call, and theirs, filled in from the initiate response.
 }

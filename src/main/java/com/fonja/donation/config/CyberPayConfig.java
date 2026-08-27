@@ -27,6 +27,19 @@ public class CyberPayConfig {
     private String apiKey = "";
 
     /**
+     * Where CyberPay posts payment notifications. Sent per transaction rather than configured once
+     * in their dashboard, so each environment gets its own without any shared setup.
+     *
+     * <p>Must be reachable from the public internet — {@code localhost} is not. In development that
+     * means a tunnel (ngrok or similar); without one, checkout still works and the webhook simply
+     * never arrives, leaving the donation PENDING.
+     */
+    private String webhookUrl = "";
+
+    /** Where CyberPay sends the donor's browser after checkout, successful or not. */
+    private String returnUrl = "";
+
+    /**
      * Bounded on purpose. The webhook handler re-queries CyberPay while holding a request thread,
      * so an unbounded read here would let a slow gateway exhaust the pool. Timing out means a 503,
      * which makes CyberPay redeliver in an hour — the failure is safe.
@@ -57,6 +70,22 @@ public class CyberPayConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
+    }
+
+    public String getWebhookUrl() {
+        return webhookUrl;
+    }
+
+    public void setWebhookUrl(String webhookUrl) {
+        this.webhookUrl = webhookUrl;
+    }
+
+    public String getReturnUrl() {
+        return returnUrl;
+    }
+
+    public void setReturnUrl(String returnUrl) {
+        this.returnUrl = returnUrl;
     }
 
     public Duration getConnectTimeout() {

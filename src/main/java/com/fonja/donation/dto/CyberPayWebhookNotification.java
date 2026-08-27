@@ -18,9 +18,13 @@ import java.util.Map;
  *
  * @param reference CyberPay's transaction reference, which is what {@code GET
  *     /api/v1/payments/{reference}} takes
+ * @param merchantReference the reference we generated and sent as {@code MerchantRef}. The fallback
+ *     handle on a donation whose initiate call reached CyberPay but whose response we never managed
+ *     to store; may be null on a notification for a payment Fonja did not open
  * @param paymentChannel their channel string, e.g. {@code BankTransfer}; may be null
  */
-public record CyberPayWebhookNotification(String reference, String paymentChannel) {
+public record CyberPayWebhookNotification(
+        String reference, String merchantReference, String paymentChannel) {
 
     /**
      * @throws ApiException badRequest if there is no reference to re-query, which makes the message
@@ -37,9 +41,12 @@ public record CyberPayWebhookNotification(String reference, String paymentChanne
             throw ApiException.badRequest("Webhook payload has no Data.Reference");
         }
 
+        JsonNode merchantRef = field(data, "merchantref");
         JsonNode channel = field(data, "paymentchannel");
         return new CyberPayWebhookNotification(
-                reference.asText().trim(), channel == null ? null : channel.asText(null));
+                reference.asText().trim(),
+                merchantRef == null ? null : merchantRef.asText(null),
+                channel == null ? null : channel.asText(null));
     }
 
     /**

@@ -42,7 +42,8 @@ class DonationWebhookControllerTest {
 
     private static final String BODY =
             "{\"Code\":\"PY00\",\"Succeeded\":true,\"Data\":{\"Status\":\"Successful\","
-                    + "\"Reference\":\"KIN190523841971254995\",\"PaymentChannel\":\"BankTransfer\"}}";
+                    + "\"Reference\":\"KIN190523841971254995\",\"MerchantRef\":\"FNJ0123456789abcdef\","
+                    + "\"PaymentChannel\":\"BankTransfer\"}}";
 
     @Autowired private MockMvc mockMvc;
 
@@ -62,7 +63,10 @@ class DonationWebhookControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.responseCode").value("00"));
 
-        verify(donationService).confirmFromWebhook("KIN190523841971254995", "BankTransfer");
+        // Both references are handed on: CyberPay's is the primary handle, ours is the fallback
+        // for a donation whose gateway reference we never managed to store.
+        verify(donationService)
+                .confirmFromWebhook("KIN190523841971254995", "FNJ0123456789abcdef", "BankTransfer");
     }
 
     @Test
@@ -112,7 +116,7 @@ class DonationWebhookControllerTest {
                                         "{\"Code\":\"PY00\",\"Data\":{\"Status\":\"Successful\"}}"))
                 .andExpect(status().isBadRequest());
 
-        verify(donationService, never()).confirmFromWebhook(anyString(), anyString());
+        verify(donationService, never()).confirmFromWebhook(anyString(), any(), any());
     }
 
     @Test
@@ -120,7 +124,7 @@ class DonationWebhookControllerTest {
         // Any non-2xx makes CyberPay redeliver in an hour, which is the point.
         doThrow(ApiException.gatewayUnavailable("not settled yet"))
                 .when(donationService)
-                .confirmFromWebhook(anyString(), any());
+                .confirmFromWebhook(anyString(), any(), any());
 
         mockMvc.perform(
                         post("/api/v1/donations/webhook")
@@ -143,6 +147,6 @@ class DonationWebhookControllerTest {
                                                 + "\"paymentChannel\":\"Card\"}}"))
                 .andExpect(status().isOk());
 
-        verify(donationService).confirmFromWebhook("KIN-1", "Card");
+        verify(donationService).confirmFromWebhook("KIN-1", null, "Card");
     }
 }

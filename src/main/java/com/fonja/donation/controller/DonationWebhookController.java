@@ -80,7 +80,10 @@ public class DonationWebhookController {
         CyberPayWebhookNotification notification = CyberPayWebhookNotification.from(parse(rawBody));
         log.info("CyberPay notification accepted for reference={}", notification.reference());
 
-        donationService.confirmFromWebhook(notification.reference(), notification.paymentChannel());
+        donationService.confirmFromWebhook(
+                notification.reference(),
+                notification.merchantReference(),
+                notification.paymentChannel());
 
         return CustomResponse.success("Notification accepted", null);
     }

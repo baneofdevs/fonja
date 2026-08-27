@@ -12,4 +12,11 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
      * the same row instead of creating a second one.
      */
     Optional<Donation> findByGatewayReference(String gatewayReference);
+
+    /**
+     * The fallback lookup for a webhook. If the initiate call reached CyberPay but our response
+     * handling died before storing their reference, this is the only handle left on the donation —
+     * and CyberPay echoes our {@code MerchantRef} back on every notification.
+     */
+    Optional<Donation> findByMerchantReference(String merchantReference);
 }
