@@ -59,12 +59,15 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         auth ->
                                 auth
-                                        // CyberPay posts here with no user token. It also posts
-                                        // with no signature: their documentation defines no signing
-                                        // scheme at all, so this endpoint cannot authenticate its
-                                        // caller and must never act on the body it receives. The
-                                        // handler takes the transaction reference and re-queries
-                                        // CyberPay for the truth. See technical spec §5.
+                                        // CyberPay posts here with no user token, so Spring
+                                        // Security
+                                        // cannot gate it — the handler authenticates the caller
+                                        // itself by verifying the `Cyberpay-Signature` header
+                                        // (HMAC-SHA512 of the raw body, keyed with our integration
+                                        // key). Even with a valid signature it re-queries CyberPay
+                                        // for the transaction's true status before writing to the
+                                        // ledger, and it tolerates duplicates: CyberPay redelivers
+                                        // hourly for 72 hours until it gets a 2xx. See spec §5.
                                         .requestMatchers("/api/v1/donations/webhook/**")
                                         .permitAll()
                                         // One pattern rather than a rule per module: a new module's

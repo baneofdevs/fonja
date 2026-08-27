@@ -14,6 +14,7 @@ import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import com.fonja.verification.entity.VerificationStatus;
 import com.fonja.verification.repository.VerificationRequestRepository;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,6 +89,52 @@ public class CampaignService {
             throw ApiException.notFound("Campaign " + campaignId + " not found");
         }
         return toResponse(campaign);
+    }
+
+    /**
+     * Resolves a campaign that is currently able to accept money, for the donation module.
+     *
+     * <p>Not owner-scoped, unlike every other read here — a donor is by definition not the creator.
+     * The guard is the lifecycle instead: only an ACTIVE campaign has been approved by an admin and
+     * has a verified creator behind it, so this is the single place that decides a campaign may be
+     * paid into.
+     *
+     * <p>Returns the entity rather than a DTO because the caller needs the creator to credit, and
+     * the currency to record the donation in.
+     *
+     * @throws ApiException notFound if no such campaign exists, conflict if it exists but is not
+     *     taking donations
+     */
+    @Transactional(readOnly = true)
+    public Campaign requireCampaignAcceptingDonations(Long campaignId) {
+        Campaign campaign =
+                campaignRepository
+                        .findById(campaignId)
+                        .orElseThrow(
+                                () ->
+                                        ApiException.notFound(
+                                                "Campaign " + campaignId + " not found"));
+
+        if (campaign.getLifecycleState() != CampaignLifecycleState.ACTIVE) {
+            // Deliberately names the state. Unlike the owner-scoped reads, there is nothing to hide
+            // here: the campaign is public once active, and a donor who has just been refused
+            // deserves to know whether it ended, was cancelled, or was never approved.
+            throw ApiException.conflict(
+                    "Campaign "
+                            + campaignId
+                            + " is "
+                            + campaign.getLifecycleState()
+                            + " and is not accepting donations");
+        }
+
+        Instant deadline = campaign.getDeadline();
+        if (deadline != null && deadline.isBefore(Instant.now())) {
+            // The hourly expiry sweep has not caught up yet. Refusing on the deadline rather than
+            // on the state closes the window between the two.
+            throw ApiException.conflict("Campaign " + campaignId + " has passed its deadline");
+        }
+
+        return campaign;
     }
 
     /**
