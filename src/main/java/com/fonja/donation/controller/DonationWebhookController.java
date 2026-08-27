@@ -1,13 +1,10 @@
 package com.fonja.donation.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.CustomResponse;
 import com.fonja.donation.dto.CyberPayWebhookNotification;
 import com.fonja.donation.service.CyberPaySignatureVerifier;
 import com.fonja.donation.service.DonationService;
-import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Receives CyberPay payment notifications.
@@ -52,7 +52,7 @@ public class DonationWebhookController {
      * it local means a future global Jackson setting — a naming strategy, a failure mode — cannot
      * change how a signed payload is read.
      */
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper JSON = new JsonMapper();
 
     private final CyberPaySignatureVerifier signatureVerifier;
     private final DonationService donationService;
@@ -91,7 +91,7 @@ public class DonationWebhookController {
     private JsonNode parse(byte[] rawBody) {
         try {
             return JSON.readTree(rawBody);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             // Signed, so it did come from CyberPay — but unparseable, and redelivering the same
             // bytes will not fix that. 400 stops the retries and leaves a log to chase.
             log.error("Signed CyberPay notification was not valid JSON", e);

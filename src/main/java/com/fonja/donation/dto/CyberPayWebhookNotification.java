@@ -1,9 +1,8 @@
 package com.fonja.donation.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fonja.common.exception.ApiException;
-import java.util.Iterator;
 import java.util.Map;
+import tools.jackson.databind.JsonNode;
 
 /**
  * The two fields the webhook handler takes from a notification body.
@@ -37,16 +36,16 @@ public record CyberPayWebhookNotification(
         }
 
         JsonNode reference = field(data, "reference");
-        if (reference == null || reference.asText("").isBlank()) {
+        if (reference == null || reference.asString("").isBlank()) {
             throw ApiException.badRequest("Webhook payload has no Data.Reference");
         }
 
         JsonNode merchantRef = field(data, "merchantref");
         JsonNode channel = field(data, "paymentchannel");
         return new CyberPayWebhookNotification(
-                reference.asText().trim(),
-                merchantRef == null ? null : merchantRef.asText(null),
-                channel == null ? null : channel.asText(null));
+                reference.asString().trim(),
+                merchantRef == null ? null : merchantRef.asString(null),
+                channel == null ? null : channel.asString(null));
     }
 
     /**
@@ -55,8 +54,7 @@ public record CyberPayWebhookNotification(
      * matching either spelling costs one loop and removes a whole class of silent breakage.
      */
     private static JsonNode field(JsonNode node, String lowercaseName) {
-        for (Iterator<Map.Entry<String, JsonNode>> it = node.fields(); it.hasNext(); ) {
-            Map.Entry<String, JsonNode> entry = it.next();
+        for (Map.Entry<String, JsonNode> entry : node.properties()) {
             if (entry.getKey().equalsIgnoreCase(lowercaseName)) {
                 return entry.getValue();
             }

@@ -1,6 +1,5 @@
 package com.fonja.donation.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fonja.common.exception.ApiException;
 import com.fonja.donation.config.CyberPayConfig;
 import com.fonja.donation.dto.CyberPayCheckout;
@@ -19,6 +18,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.JsonNode;
 
 /** Wraps the CyberPay HTTP API — the two calls the donation flow makes. */
 @Service
@@ -102,8 +102,8 @@ public class CyberPayClient {
         }
 
         JsonNode data = response == null ? null : response.get("data");
-        String reference = data == null ? null : data.path("transactionReference").asText(null);
-        String redirectUrl = data == null ? null : data.path("redirectUrl").asText(null);
+        String reference = data == null ? null : data.path("transactionReference").asString(null);
+        String redirectUrl = data == null ? null : data.path("redirectUrl").asString(null);
 
         if (reference == null
                 || reference.isBlank()
@@ -115,8 +115,8 @@ public class CyberPayClient {
             log.warn(
                     "CyberPay declined initiate for merchantRef={}: code={} message={}",
                     merchantReference,
-                    response == null ? null : response.path("code").asText(null),
-                    response == null ? null : response.path("message").asText(null));
+                    response == null ? null : response.path("code").asString(null),
+                    response == null ? null : response.path("message").asString(null));
             throw ApiException.gatewayUnavailable(
                     "The payment gateway did not return a checkout URL");
         }
@@ -162,26 +162,24 @@ public class CyberPayClient {
             log.warn(
                     "CyberPay re-query for reference={} returned no data node (code={})",
                     transactionReference,
-                    body == null ? null : body.path("code").asText(null));
+                    body == null ? null : body.path("code").asString(null));
             throw ApiException.gatewayUnavailable(
                     "CyberPay returned no transaction data for " + transactionReference);
         }
 
         return new CyberPayTransaction(
-                data.path("reference").asText(transactionReference),
-                data.path("status").asText(null),
+                data.path("reference").asString(transactionReference),
+                data.path("status").asString(null),
                 toNaira(data.path("amount")));
     }
 
     /**
      * Converts CyberPay's integer kobo into naira.
      *
-     * <p><strong>Unverified against a live transaction.</strong> Their documentation never states
-     * the unit, and their samples are consistent with either reading — a ₦500 payment charged ₦7.50
-     * and a ₦50,000 payment charged ₦750 both appear as {@code 50000} / {@code 750}. Kobo is the
-     * recorded assumption. If it is wrong, the amount check in {@code DonationService} fails closed
-     * on the very first staging donation and logs it, rather than crediting a creator a hundred
-     * times what the donor gave. Confirm against a real staging payment before launch.
+     * <p><strong>Confirmed against a live staging transaction on 2026-08-27:</strong> a ₦100
+     * donation came back as {@code "Amount": 10000}. Their documentation still never states the
+     * unit, so the amount check in {@code DonationService} stays — it is what would catch a change
+     * on their side before a creator was credited a hundred times what a donor gave.
      */
     private static BigDecimal toNaira(JsonNode amount) {
         if (amount == null || !amount.isNumber()) {

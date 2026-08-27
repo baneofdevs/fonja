@@ -224,10 +224,13 @@ fonja/
 - [ ] Exact document types required per verification type (individual vs. business/NGO)
 - [ ] Platform fee split confirmation (7% / ₦200 — business-confirmed, not yet legally reviewed per BRD §19)
 - [ ] Timeline to migrate document storage from local filesystem to object storage — must happen before any multi-instance deployment
-- [ ] **`TransactionDate` format.** The docs show `"8/7/2026 8:01:12 AM +01:00"`; a real captured
-      webhook showed `"2026-08-20T08:16:36.542604700"` with no offset. Parse both leniently, or ask
-      CyberPay which is authoritative and what timezone an offset-less value is in.
-      *(Resolved and closed: webhook authentication — see §5.5.)*
+- [ ] **Who absorbs CyberPay's charge.** A live staging donation of ₦100 came back with
+      `"Charge": 10000` — the same as the amount. The staging figure is clearly not real, but the
+      question it raises is: if CyberPay deducts their charge from what they settle to Fonja, then
+      Fonja receives less than the gross the ledger splits. The ledger credits the creator 93% of
+      the **gross**, so at small amounts Fonja's 7% may not cover the gateway fee at all, and Fonja
+      pays the difference out of its own pocket. Get the real fee schedule and decide whether the
+      7% is taken before or after it. **This is the last unmodelled money flow in the system.**
 - [ ] **Refunds.** Not currently specified. Whether Fonja ever needs to refund a donor or freeze a
       fraudulent campaign's funds is what permanently rules `Splits` in or out (§4.4).
 - [ ] **BVN / NIN verification.** CyberPay exposes `POST /api/v1/bvn/verify` and `/api/v1/nin`. An

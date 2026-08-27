@@ -83,7 +83,10 @@ fonja:
     # public internet — in development that means a tunnel, since CyberPay cannot post to
     # localhost. Without one, checkout still works and the donation simply stays PENDING.
     webhook-url: ${CYBERPAY_WEBHOOK_URL:http://localhost:8080/api/v1/donations/webhook}
-    return-url: ${CYBERPAY_RETURN_URL:http://localhost:8080/donation-complete}
+    # Where the donor's browser lands after checkout. Must already contain a query string:
+    # CyberPay appends "&status=Completed" rather than "?status=Completed", so a bare path comes
+    # back as ".../donation-complete&status=Completed" — one URL, no query, and the page 404s.
+    return-url: ${CYBERPAY_RETURN_URL:http://localhost:8080/donation-complete?from=cyberpay}
     connect-timeout: ${CYBERPAY_CONNECT_TIMEOUT:5s}
     read-timeout: ${CYBERPAY_READ_TIMEOUT:15s}
 
