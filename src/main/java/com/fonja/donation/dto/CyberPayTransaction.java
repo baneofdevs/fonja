@@ -16,8 +16,12 @@ import java.util.Set;
  *     rather than flattened into an enum constant that loses it
  * @param amount the gross amount <strong>in naira</strong>, already converted from the kobo integer
  *     CyberPay returns
+ * @param paymentChannel their channel string, e.g. {@code Card}; may be null. The webhook carries
+ *     the same thing, so this matters only on the sweep path, where there is no notification to read
+ *     it from and this is the sole source for the donation's payment method
  */
-public record CyberPayTransaction(String reference, String status, BigDecimal amount) {
+public record CyberPayTransaction(
+        String reference, String status, BigDecimal amount, String paymentChannel) {
 
     private static final Set<String> SUCCESSFUL = Set.of("successful", "success", "completed");
 

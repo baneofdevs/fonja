@@ -5,6 +5,7 @@ import com.fonja.common.response.CustomResponse;
 import com.fonja.donation.dto.CyberPayWebhookNotification;
 import com.fonja.donation.service.CyberPaySignatureVerifier;
 import com.fonja.donation.service.DonationService;
+import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,6 +76,7 @@ public class DonationWebhookController {
                     String signature,
             @RequestBody(required = false) byte[] rawBody) {
 
+        logRawBody(signature, rawBody);
         signatureVerifier.verify(rawBody, signature);
 
         CyberPayWebhookNotification notification = CyberPayWebhookNotification.from(parse(rawBody));
@@ -86,6 +88,31 @@ public class DonationWebhookController {
                 notification.paymentChannel());
 
         return CustomResponse.success("Notification accepted", null);
+    }
+
+    /**
+     * Dumps the notification exactly as it arrived, for development.
+     *
+     * <p><strong>Before verification, on purpose.</strong> The one time you most need to read a body
+     * is when its signature did not match — the verifier throws, so anything logged after it would
+     * never run for precisely the case worth debugging.
+     *
+     * <p>The cost is that an unauthenticated caller controls what lands in the log, which is why
+     * this is DEBUG and the level guard is explicit: at the default level nothing is read, formatted
+     * or written, so an attacker spamming the endpoint cannot fill a disk. It also means the log
+     * carries whatever CyberPay put in the payload, and a bank transfer includes the donor's
+     * {@code OriginatorAccount} and {@code AccountNumber} — do not enable this in production.
+     */
+    private void logRawBody(String signature, byte[] rawBody) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        log.debug(
+                "CyberPay webhook: {} header={} bytes={} body={}",
+                CyberPaySignatureVerifier.SIGNATURE_HEADER,
+                signature,
+                rawBody == null ? 0 : rawBody.length,
+                rawBody == null ? "<empty>" : new String(rawBody, StandardCharsets.UTF_8));
     }
 
     private JsonNode parse(byte[] rawBody) {

@@ -8,6 +8,7 @@ import com.fonja.donation.dto.CyberPayTransaction;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
 import com.fonja.donation.entity.Donation;
+import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.ledger.service.LedgerService;
@@ -112,7 +113,8 @@ public class DonationService {
                             donation.getDonor());
         } catch (RuntimeException e) {
             // CyberPay never issued a checkout page, so no donor can be looking at one. Closing the
-            // row keeps the pending list meaning "waiting on a donor", not "waiting on nothing".
+            // row keeps the pending list meaning "waiting on a donor", not "waiting on nothing" —
+            // and keeps the sweep from re-querying a reference that was never created.
             transactionTemplate.executeWithoutResult(
                     status ->
                             donationRepository
@@ -192,21 +194,82 @@ public class DonationService {
             return;
         }
 
+        if (settle(donation, gatewayReference, paymentChannel) == SettlementOutcome.UNDECIDED) {
+            // CyberPay's notification outran their own read model, or the status is one this
+            // version does not recognise. Both are resolved by asking again in an hour, and a 503
+            // is how we ask.
+            throw ApiException.gatewayUnavailable(
+                    "CyberPay has not reached a verdict on " + gatewayReference + " yet");
+        }
+    }
+
+    /**
+     * Re-queries one donation that has been PENDING too long, and settles it if CyberPay has since
+     * decided. The safety net under the webhook: a notification lost to a restart, an expired
+     * tunnel, or a bug is money a creator is owed and would otherwise never see.
+     *
+     * <p>Its own transaction per donation, called from {@link PendingDonationSweepJob} one at a
+     * time, so a single unreachable gateway or bad row cannot roll back a whole batch.
+     *
+     * @return what happened, for the sweep's summary line
+     */
+    @Transactional
+    public SettlementOutcome reconcilePending(Long donationId) {
+        Donation donation = donationRepository.findById(donationId).orElse(null);
+        if (donation == null || donation.getStatus() != DonationStatus.PENDING) {
+            // A webhook settled it between the sweep's query and this call. The webhook getting
+            // there first is the normal case, not an error.
+            return SettlementOutcome.ALREADY_SETTLED;
+        }
+
+        if (donation.getGatewayReference() == null) {
+            // Initiate reached CyberPay but the transaction storing their reference never
+            // committed, so there is no reference to re-query with — CyberPay's API is keyed on
+            // theirs, not on our MerchantRef. Only an inbound webhook can resolve this one, and it
+            // still can: confirmFromWebhook falls back to MerchantRef. Left alone, never failed.
+            log.warn(
+                    "Donation id={} has been PENDING since {} with no gateway reference; only a "
+                            + "webhook quoting merchantRef={} can settle it",
+                    donation.getId(),
+                    donation.getCreatedAt(),
+                    donation.getMerchantReference());
+            return SettlementOutcome.UNRESOLVABLE;
+        }
+
+        return settle(donation, donation.getGatewayReference(), null);
+    }
+
+    /**
+     * The single place a donation is allowed to change status, shared by the webhook and the sweep.
+     *
+     * <p>Shared on purpose rather than duplicated: the two paths differ only in what wakes them up,
+     * and a rule that lived in one of them — the amount check above all — would eventually be the
+     * rule the other one forgot.
+     *
+     * <p>Never marks a donation FAILED on age or silence, only on CyberPay explicitly saying so. A
+     * donation wrongly closed here is unrecoverable: {@link #confirmFromWebhook} ignores a
+     * notification for an already-FAILED donation, so a real payment arriving afterwards would be
+     * dropped.
+     *
+     * @param paymentChannel the channel from a webhook, or null on the sweep path — where the
+     *     re-query's own channel is used instead
+     */
+    private SettlementOutcome settle(
+            Donation donation, String gatewayReference, String paymentChannel) {
         switch (donation.getStatus()) {
             case SUCCESS -> {
                 // A duplicate delivery. Re-post rather than return: if a previous attempt marked
-                // the
-                // donation and then died before the ledger write, this is what repairs it.
+                // the donation and then died before the ledger write, this is what repairs it.
                 log.debug(
                         "Donation id={} already confirmed, re-asserting ledger", donation.getId());
                 ledgerService.recordDonation(donation);
-                return;
+                return SettlementOutcome.ALREADY_SETTLED;
             }
             case FAILED -> {
                 log.warn(
                         "CyberPay notification for donation id={} which is already FAILED, ignoring",
                         donation.getId());
-                return;
+                return SettlementOutcome.ALREADY_SETTLED;
             }
             case PENDING -> {
                 /* the only case worth re-querying */
@@ -216,14 +279,11 @@ public class DonationService {
         CyberPayTransaction transaction = cyberPayClient.requery(gatewayReference);
 
         if (transaction.isPending()) {
-            // CyberPay's notification outran their own read model, or the status is one this
-            // version does not recognise. Both are resolved by asking again in an hour.
-            throw ApiException.gatewayUnavailable(
-                    "CyberPay reports "
-                            + gatewayReference
-                            + " as '"
-                            + transaction.status()
-                            + "', which is not a verdict yet");
+            log.debug(
+                    "Donation id={} still undecided: CyberPay status '{}'",
+                    donation.getId(),
+                    transaction.status());
+            return SettlementOutcome.UNDECIDED;
         }
 
         if (transaction.isFailed()) {
@@ -232,7 +292,7 @@ public class DonationService {
                     "Donation id={} marked FAILED: CyberPay status '{}'",
                     donation.getId(),
                     transaction.status());
-            return;
+            return SettlementOutcome.FAILED;
         }
 
         if (!amountsAgree(transaction.amount(), donation.getAmount())) {
@@ -247,21 +307,39 @@ public class DonationService {
                     donation.getAmount(),
                     transaction.amount(),
                     gatewayReference);
-            return;
+            return SettlementOutcome.AMOUNT_MISMATCH;
         }
 
-        donation.markSuccessful(PaymentMethod.fromChannel(paymentChannel));
+        String channel = paymentChannel != null ? paymentChannel : transaction.paymentChannel();
+        donation.markSuccessful(PaymentMethod.fromChannel(channel));
         ledgerService.recordDonation(donation);
         log.info(
                 "Donation id={} confirmed for {} via {}",
                 donation.getId(),
                 donation.getAmount(),
-                paymentChannel);
+                channel);
+        return SettlementOutcome.SETTLED;
     }
 
-    // TODO (donation module): sweep PENDING donations older than a day. An abandoned checkout
-    // leaves one behind, and CyberPay's own status for it is Abandoned — a periodic re-query would
-    // close them without waiting for a notification that is never coming.
+    /**
+     * What a settlement attempt did. Exists because the webhook and the sweep must react differently
+     * to the same result: "no verdict yet" is a 503 to CyberPay, asking them to redeliver, but to
+     * the sweep it is simply a row to look at again next hour.
+     */
+    public enum SettlementOutcome {
+        /** Confirmed and posted to the ledger. */
+        SETTLED,
+        /** CyberPay says this payment will never complete. */
+        FAILED,
+        /** No verdict yet, or a status this version does not recognise. Ask again later. */
+        UNDECIDED,
+        /** CyberPay's amount is not the one we recorded. Left PENDING for a human. */
+        AMOUNT_MISMATCH,
+        /** Already SUCCESS or FAILED before we looked. */
+        ALREADY_SETTLED,
+        /** PENDING with no gateway reference — nothing to re-query with. */
+        UNRESOLVABLE
+    }
 
     /**
      * Finds the donation a notification belongs to, by CyberPay's reference first and ours second.

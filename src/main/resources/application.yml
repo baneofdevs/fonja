@@ -97,6 +97,14 @@ fonja:
       # before any multi-instance deployment. See technical spec §6.
       base-path: ${STORAGE_LOCAL_BASE_PATH:./data/fonja-documents}
 
+logging:
+  level:
+    # Dumps each CyberPay notification exactly as it arrived, before the signature is checked —
+    # the only way to see a body whose signature did not match. Off by default: the payload of a
+    # bank transfer carries the donor's account number, so this is a development switch only.
+    #   FONJA_LOG_WEBHOOK=DEBUG ./mvnw spring-boot:run
+    com.fonja.donation.controller.DonationWebhookController: ${FONJA_LOG_WEBHOOK:INFO}
+
 management:
   endpoints:
     web:
