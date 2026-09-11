@@ -246,8 +246,8 @@ public class LedgerService {
     }
 
     /**
-     * Fonja's own revenue: the 7% cut of donations plus the flat fee on withdrawals, net of the fees
-     * refunded on failed ones.
+     * Fonja's own revenue: the 7% cut of donations plus the flat fee on withdrawals, net of the
+     * fees refunded on failed ones.
      *
      * <p>Summed explicitly rather than through {@link #netOf}, because {@link LedgerEntryType}'s
      * direction is written from the <em>beneficiary's</em> point of view and both fee types are

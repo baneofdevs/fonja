@@ -84,7 +84,8 @@ class DonationControllerTest {
                         jsonPath("$.responseData.checkoutUrl")
                                 .value("https://payment.cyberpay.ng/pay?reference=KIN-1"))
                 // The gateway fee reaches the client before the redirect, so the donor is told the
-                // real total up front rather than meeting it on CyberPay's page. The donation itself
+                // real total up front rather than meeting it on CyberPay's page. The donation
+                // itself
                 // is unchanged — the fee rides on top and Fonja is settled the full 5,000.
                 .andExpect(jsonPath("$.responseData.amount").value(5000.00))
                 .andExpect(jsonPath("$.responseData.processingFee").value(129.00))

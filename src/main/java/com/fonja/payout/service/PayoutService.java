@@ -92,14 +92,14 @@ public class PayoutService {
      * Links or relinks the account a creator's withdrawals go to.
      *
      * <p>The name is taken from the bank, never from the request. When CyberPay's name enquiry
-     * answers, the holder it reports is stored and the account is marked verified; when it does not,
-     * the account links anyway with a placeholder name and no verification stamp.
+     * answers, the holder it reports is stored and the account is marked verified; when it does
+     * not, the account links anyway with a placeholder name and no verification stamp.
      *
      * <p>Linking soft is deliberate. Name enquiry is a fail-fast convenience, not the last line of
      * defence — a Nigerian transfer is validated against the account at NIBSS whether or not we
-     * looked it up first, and a mismatched one fails there and reverses. Blocking every creator from
-     * linking an account because a third party is unreachable would be an outage dressed up as a
-     * security control.
+     * looked it up first, and a mismatched one fails there and reverses. Blocking every creator
+     * from linking an account because a third party is unreachable would be an outage dressed up as
+     * a security control.
      *
      * @throws ApiException forbidden if the caller is not a verified creator
      */
@@ -154,9 +154,9 @@ public class PayoutService {
     /**
      * What the creator could withdraw right now.
      *
-     * <p>{@code maxWithdrawable} is the figure that matters and the one a client would otherwise get
-     * wrong: the flat fee comes out of the same balance, so a creator with ₦9,300 available can ask
-     * for at most ₦9,100.
+     * <p>{@code maxWithdrawable} is the figure that matters and the one a client would otherwise
+     * get wrong: the flat fee comes out of the same balance, so a creator with ₦9,300 available can
+     * ask for at most ₦9,100.
      */
     @Transactional(readOnly = true)
     public PayoutQuoteResponse quote(Long userId) {
@@ -177,9 +177,10 @@ public class PayoutService {
      * explain it. Nothing here calls the gateway, so there is no external call to keep out of the
      * transaction — dispatch happens afterwards, in {@link #dispatch}.
      *
-     * <p>The balance check itself lives in {@link LedgerService#recordWithdrawal}, which takes a row
-     * lock on the creator first. That is what serialises two withdrawal requests arriving at once;
-     * checking the balance here as well would just be a check that a concurrent request could pass.
+     * <p>The balance check itself lives in {@link LedgerService#recordWithdrawal}, which takes a
+     * row lock on the creator first. That is what serialises two withdrawal requests arriving at
+     * once; checking the balance here as well would just be a check that a concurrent request could
+     * pass.
      *
      * @throws ApiException forbidden if the caller is not a verified creator, badRequest if no bank
      *     account is linked, conflict if the balance will not cover the amount plus the fee
@@ -222,10 +223,10 @@ public class PayoutService {
      * Sends one payout to the gateway.
      *
      * <p><strong>Deliberately not one transaction.</strong> The attempt is stamped and committed
-     * before the call, so a payout is sent at most once even if the reply never arrives — see {@link
-     * PayoutRequest#claimForDispatch()}. The outcome is then recorded in a second transaction.
-     * Wrapping both around the HTTP call would mean a commit failure after CyberPay accepted the
-     * instruction leaves money gone with no record of where it went.
+     * before the call, so a payout is sent at most once even if the reply never arrives — see
+     * {@link PayoutRequest#claimForDispatch()}. The outcome is then recorded in a second
+     * transaction. Wrapping both around the HTTP call would mean a commit failure after CyberPay
+     * accepted the instruction leaves money gone with no record of where it went.
      *
      * @return true if the gateway accepted the instruction
      * @throws ApiException gatewayUnavailable if the call could not be completed — the payout stays
@@ -283,11 +284,13 @@ public class PayoutService {
     public PayoutResponse markPaid(Long payoutId) {
         PayoutRequest payout = require(payoutId);
         if (payout.isTerminal()) {
-            throw ApiException.conflict(
-                    "Payout " + payoutId + " is already " + payout.getStatus());
+            throw ApiException.conflict("Payout " + payoutId + " is already " + payout.getStatus());
         }
         payout.markPaid();
-        log.info("Payout id={} marked PAID for creator id={}", payoutId, payout.getCreator().getId());
+        log.info(
+                "Payout id={} marked PAID for creator id={}",
+                payoutId,
+                payout.getCreator().getId());
         return PayoutResponse.from(payout);
     }
 
@@ -300,8 +303,7 @@ public class PayoutService {
     public PayoutResponse markFailed(Long payoutId, String reason) {
         PayoutRequest payout = require(payoutId);
         if (payout.isTerminal()) {
-            throw ApiException.conflict(
-                    "Payout " + payoutId + " is already " + payout.getStatus());
+            throw ApiException.conflict("Payout " + payoutId + " is already " + payout.getStatus());
         }
         fail(payout, reason);
         return PayoutResponse.from(payout);

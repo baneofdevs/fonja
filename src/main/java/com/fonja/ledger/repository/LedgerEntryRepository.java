@@ -32,13 +32,13 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
      *
      * <p>Selected by entry type rather than by "no beneficiary", which is the obvious query and the
      * wrong one. Both of Fonja's income streams are here, and they are shaped differently:
-     * `PLATFORM_FEE` is written with a null beneficiary, but a withdrawal fee is written *against the
-     * creator* — it has to be, or it would not come out of their balance. Filtering on a null
-     * beneficiary would therefore count the 7% and silently miss every ₦200, understating revenue by
-     * the whole withdrawal-fee line that BRD §227 counts on.
+     * `PLATFORM_FEE` is written with a null beneficiary, but a withdrawal fee is written *against
+     * the creator* — it has to be, or it would not come out of their balance. Filtering on a null
+     * beneficiary would therefore count the 7% and silently miss every ₦200, understating revenue
+     * by the whole withdrawal-fee line that BRD §227 counts on.
      *
-     * <p>The same entries legitimately appear in both this sum and the creator's: a withdrawal fee is
-     * a debit to them and income to Fonja. That is double-entry working correctly, not a bug.
+     * <p>The same entries legitimately appear in both this sum and the creator's: a withdrawal fee
+     * is a debit to them and income to Fonja. That is double-entry working correctly, not a bug.
      */
     @Query(
             """

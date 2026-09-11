@@ -9,17 +9,17 @@ import java.util.Optional;
  * What the payout module needs from a bank-transfer provider, and nothing more.
  *
  * <p>An interface rather than a direct dependency on CyberPay for the same reason {@code
- * StorageService} is one: the provider is a decision that can change, and the module should not have
- * to. It also keeps {@code PayoutService} testable without an HTTP client — the money rules are the
- * part worth testing, and they should not need a gateway to exercise.
+ * StorageService} is one: the provider is a decision that can change, and the module should not
+ * have to. It also keeps {@code PayoutService} testable without an HTTP client — the money rules
+ * are the part worth testing, and they should not need a gateway to exercise.
  */
 public interface PayoutGateway {
 
     /**
      * Whether this gateway can currently send anything.
      *
-     * <p>Checked before dispatch rather than discovered by exception, so a deployment with no payout
-     * credentials logs one line at startup instead of a stack trace per withdrawal.
+     * <p>Checked before dispatch rather than discovered by exception, so a deployment with no
+     * payout credentials logs one line at startup instead of a stack trace per withdrawal.
      */
     boolean isAvailable();
 
@@ -37,9 +37,9 @@ public interface PayoutGateway {
      * Instructs a transfer.
      *
      * <p><strong>Not idempotent, and cannot be made so from this side.</strong> The {@code
-     * merchantReference} is what lets the gateway recognise a duplicate, but nothing here can promise
-     * they will. A caller that retries a timed-out instruction risks paying twice; the only safe
-     * response to an uncertain dispatch is to re-query, never to re-send.
+     * merchantReference} is what lets the gateway recognise a duplicate, but nothing here can
+     * promise they will. A caller that retries a timed-out instruction risks paying twice; the only
+     * safe response to an uncertain dispatch is to re-query, never to re-send.
      *
      * @throws ApiException gatewayUnavailable if the gateway could not be reached at all — which,
      *     unlike a refusal, leaves the instruction's fate genuinely unknown

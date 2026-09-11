@@ -7,8 +7,8 @@ import java.time.Instant;
  * A linked bank account as the creator sees it.
  *
  * @param accountNumber masked to the last four digits. The creator already knows their own account
- *     number, so showing it in full buys nothing and puts it in every log, cache and screenshot that
- *     touches this response
+ *     number, so showing it in full buys nothing and puts it in every log, cache and screenshot
+ *     that touches this response
  * @param accountName the bank's own name for the account when it could be looked up, otherwise
  *     whatever was recorded at link time
  * @param verifiedAt when CyberPay's name enquiry confirmed the account. Null means the lookup has

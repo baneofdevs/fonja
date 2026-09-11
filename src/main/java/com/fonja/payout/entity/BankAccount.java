@@ -61,8 +61,8 @@ public class BankAccount {
      *
      * <p>Clears {@code verifiedAt} unconditionally. A verification stamp belongs to the account
      * number it was obtained for, and carrying it across to a new one would mean a creator could
-     * launder an unverified account through a verified link — exactly the check this stamp exists to
-     * record.
+     * launder an unverified account through a verified link — exactly the check this stamp exists
+     * to record.
      */
     public void relink(String accountName, String accountNumber, String bankCode, String bankName) {
         this.accountName = accountName;

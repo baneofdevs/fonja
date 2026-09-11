@@ -10,8 +10,8 @@ import java.math.BigDecimal;
  *
  * <p>The amount is what the creator receives. The flat fee is added on top and taken from their
  * balance alongside it, so a request for ₦5,000 costs ₦5,200 in earnings — which is why {@code GET
- * /api/v1/payouts/quote} exists and reports the real maximum rather than leaving a client to work it
- * out and get it wrong.
+ * /api/v1/payouts/quote} exists and reports the real maximum rather than leaving a client to work
+ * it out and get it wrong.
  *
  * <p>No bank account field: withdrawals go to the account already linked to the creator. A payout
  * that could name its own destination would turn one stolen token into one stolen balance.

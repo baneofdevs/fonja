@@ -17,8 +17,8 @@ import java.util.Set;
  * @param amount the gross amount <strong>in naira</strong>, already converted from the kobo integer
  *     CyberPay returns
  * @param paymentChannel their channel string, e.g. {@code Card}; may be null. The webhook carries
- *     the same thing, so this matters only on the sweep path, where there is no notification to read
- *     it from and this is the sole source for the donation's payment method
+ *     the same thing, so this matters only on the sweep path, where there is no notification to
+ *     read it from and this is the sole source for the donation's payment method
  */
 public record CyberPayTransaction(
         String reference, String status, BigDecimal amount, String paymentChannel) {

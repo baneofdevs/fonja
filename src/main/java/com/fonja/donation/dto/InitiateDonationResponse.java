@@ -30,9 +30,10 @@ public record InitiateDonationResponse(
     /**
      * Builds the response from the donation and CyberPay's reply.
      *
-     * <p>The fee is surfaced here so a client can show "₦10,000 + ₦208 fee = ₦10,208" <em>before</em>
-     * the redirect. A donor who first meets the charge on CyberPay's page reads it as a surprise, and
-     * on a crowdfunding product that is a trust problem rather than a formatting one.
+     * <p>The fee is surfaced here so a client can show "₦10,000 + ₦208 fee = ₦10,208"
+     * <em>before</em> the redirect. A donor who first meets the charge on CyberPay's page reads it
+     * as a surprise, and on a crowdfunding product that is a trust problem rather than a formatting
+     * one.
      */
     public static InitiateDonationResponse from(
             Donation donation, String checkoutUrl, BigDecimal processingFee) {

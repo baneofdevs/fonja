@@ -322,9 +322,9 @@ public class DonationService {
     }
 
     /**
-     * What a settlement attempt did. Exists because the webhook and the sweep must react differently
-     * to the same result: "no verdict yet" is a 503 to CyberPay, asking them to redeliver, but to
-     * the sweep it is simply a row to look at again next hour.
+     * What a settlement attempt did. Exists because the webhook and the sweep must react
+     * differently to the same result: "no verdict yet" is a 503 to CyberPay, asking them to
+     * redeliver, but to the sweep it is simply a row to look at again next hour.
      */
     public enum SettlementOutcome {
         /** Confirmed and posted to the ledger. */

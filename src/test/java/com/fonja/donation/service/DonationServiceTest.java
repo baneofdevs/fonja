@@ -289,12 +289,14 @@ class DonationServiceTest {
     @Test
     void leavesTheTotalUnquotedWhenCyberPayOmitsTheCharge() {
         // Better a client that shows the donation alone than one that shows a total we made up: the
-        // donor sees the real figure on CyberPay's page regardless, and a wrong number here would be
+        // donor sees the real figure on CyberPay's page regardless, and a wrong number here would
+        // be
         // worse than no number.
         givenCheckoutSucceeds();
         when(cyberPayClient.initiatePayment(any(), any(), any(), any(), any()))
                 .thenReturn(
-                        new CyberPayCheckout("KIN-1", "https://payment.cyberpay.ng/pay?ref=x", null));
+                        new CyberPayCheckout(
+                                "KIN-1", "https://payment.cyberpay.ng/pay?ref=x", null));
 
         InitiateDonationResponse response =
                 donationService.initiate(
@@ -490,12 +492,14 @@ class DonationServiceTest {
         givenDonationById(pending());
         givenCyberPaySays("Pending", AMOUNT);
 
-        assertThatCode(() -> donationService.reconcilePending(DONATION_ID)).doesNotThrowAnyException();
+        assertThatCode(() -> donationService.reconcilePending(DONATION_ID))
+                .doesNotThrowAnyException();
     }
 
     @Test
     void sweepLeavesADonationWithNoGatewayReferenceAlone() {
-        // Nothing to re-query with: CyberPay's API is keyed on their reference, not our MerchantRef.
+        // Nothing to re-query with: CyberPay's API is keyed on their reference, not our
+        // MerchantRef.
         // A webhook can still settle it, so it must not be closed.
         Donation stranded = opened();
         givenDonationById(stranded);

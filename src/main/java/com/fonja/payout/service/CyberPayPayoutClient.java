@@ -34,12 +34,12 @@ import tools.jackson.databind.JsonNode;
  * request is being processed".
  *
  * <p><strong>This has never run against a live endpoint.</strong> It is written to CyberPay's
- * documented request and response shapes for {@code POST /instant}, which is the one payout endpoint
- * they publish both halves of. {@code PAYOUT_BASE_URL}, {@code AUTHORIZATION_URL} and the wallet code
- * are not in their collection at all and have to come from CyberPay directly, so {@link
- * PayoutConfig#isConfigured()} is false out of the box and {@link #isAvailable()} reports it. Parsing
- * is deliberately forgiving about case and field names — their documentation is inconsistent enough
- * that assuming one spelling would be optimistic.
+ * documented request and response shapes for {@code POST /instant}, which is the one payout
+ * endpoint they publish both halves of. {@code PAYOUT_BASE_URL}, {@code AUTHORIZATION_URL} and the
+ * wallet code are not in their collection at all and have to come from CyberPay directly, so {@link
+ * PayoutConfig#isConfigured()} is false out of the box and {@link #isAvailable()} reports it.
+ * Parsing is deliberately forgiving about case and field names — their documentation is
+ * inconsistent enough that assuming one spelling would be optimistic.
  */
 @Service
 @EnableConfigurationProperties(PayoutConfig.class)
@@ -105,8 +105,8 @@ public class CyberPayPayoutClient implements PayoutGateway {
      *
      * <p>CyberPay documents this endpoint's request body and not its response, so every plausible
      * spelling of "the account holder's name" is tried before giving up. Failing soft is the whole
-     * design: an unreachable name enquiry must not stop a creator linking their account, because the
-     * transfer is validated against the name at NIBSS whether we looked it up or not.
+     * design: an unreachable name enquiry must not stop a creator linking their account, because
+     * the transfer is validated against the name at NIBSS whether we looked it up or not.
      */
     @Override
     public Optional<String> lookupAccountName(String bankCode, String accountNumber) {
@@ -188,9 +188,9 @@ public class CyberPayPayoutClient implements PayoutGateway {
     }
 
     /**
-     * Reads their answer. Success is {@code Succeeded} true <em>and</em> a reference in {@code Data}
-     * — a "succeeded" with nothing to re-query later is not something to mark a payout PROCESSING on,
-     * because there would then be no way to ever find out what happened to it.
+     * Reads their answer. Success is {@code Succeeded} true <em>and</em> a reference in {@code
+     * Data} — a "succeeded" with nothing to re-query later is not something to mark a payout
+     * PROCESSING on, because there would then be no way to ever find out what happened to it.
      */
     private PayoutDispatch interpret(JsonNode response, String merchantReference) {
         if (response == null) {
@@ -230,7 +230,8 @@ public class CyberPayPayoutClient implements PayoutGateway {
         }
         return PayoutDispatch.refused(
                 message == null || message.isBlank()
-                        ? "The payout gateway refused the transfer" + (code == null ? "" : " (" + code + ")")
+                        ? "The payout gateway refused the transfer"
+                                + (code == null ? "" : " (" + code + ")")
                         : message);
     }
 
@@ -249,8 +250,7 @@ public class CyberPayPayoutClient implements PayoutGateway {
                             .uri(
                                     uri ->
                                             uri.path("/oauth2/token")
-                                                    .queryParam(
-                                                            "grant_type", "client_credentials")
+                                                    .queryParam("grant_type", "client_credentials")
                                                     .queryParam("scopes", "profile")
                                                     .build())
                             .headers(
@@ -275,7 +275,8 @@ public class CyberPayPayoutClient implements PayoutGateway {
         long expiresIn = body.path("expires_in").asLong(3600L);
         CachedToken fresh =
                 new CachedToken(
-                        accessToken, Instant.now().plusSeconds(expiresIn).minus(TOKEN_REFRESH_MARGIN));
+                        accessToken,
+                        Instant.now().plusSeconds(expiresIn).minus(TOKEN_REFRESH_MARGIN));
         token.set(fresh);
         return fresh.value();
     }

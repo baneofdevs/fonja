@@ -21,8 +21,8 @@ import org.springframework.stereotype.Component;
  * <p><strong>This is a money-recovery job, not a cleanup job.</strong> A webhook can be lost — the
  * tunnel was down, the instance was restarting mid-deploy, our handler had a bug, CyberPay gave up
  * after 72 hours of 503s. Every one of those leaves a donation that a donor paid for and a creator
- * was never credited with. Nothing else in the system would ever notice. The abandoned-checkout rows
- * it also closes are a side effect, and much the less important half.
+ * was never credited with. Nothing else in the system would ever notice. The abandoned-checkout
+ * rows it also closes are a side effect, and much the less important half.
  *
  * <p>It never fails a donation on age or silence. The only thing that closes a row here is CyberPay
  * saying so, because {@link DonationService#confirmFromWebhook} ignores notifications for an
@@ -30,8 +30,8 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>Caveat:</b> like {@code CampaignExpiryJob}, an unsynchronised in-process schedule. On more
  * than one instance every instance sweeps. That is safe rather than merely tolerable — settlement
- * runs in a transaction and the ledger's unique indexes reject a second write — but it is duplicated
- * work against CyberPay's API, so this wants a shared lock before Fonja scales out.
+ * runs in a transaction and the ledger's unique indexes reject a second write — but it is
+ * duplicated work against CyberPay's API, so this wants a shared lock before Fonja scales out.
  */
 @Component
 public class PendingDonationSweepJob {
@@ -41,8 +41,8 @@ public class PendingDonationSweepJob {
     /**
      * How long a donation may sit PENDING before the sweep asks about it. Hosted checkout is a
      * matter of minutes and a webhook arrives seconds after payment, so anything past this is
-     * already off the happy path — while a shorter window would mostly re-query donors who are still
-     * typing their card number.
+     * already off the happy path — while a shorter window would mostly re-query donors who are
+     * still typing their card number.
      */
     private static final Duration SETTLE_GRACE = Duration.ofMinutes(30);
 

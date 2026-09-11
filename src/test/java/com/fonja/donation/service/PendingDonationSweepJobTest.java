@@ -58,10 +58,12 @@ class PendingDonationSweepJobTest {
         Instant now = Instant.now();
         // Recent end: donations younger than the grace period are excluded, because a donor may
         // still be on the checkout page and re-querying them is pure waste.
-        assertThat(Duration.between(to.getValue(), now)).isCloseTo(Duration.ofMinutes(30), Duration.ofMinutes(1));
+        assertThat(Duration.between(to.getValue(), now))
+                .isCloseTo(Duration.ofMinutes(30), Duration.ofMinutes(1));
         // Old end: past this, CyberPay's 72 hours of retries are long over and nothing the sweep
         // does will change the answer.
-        assertThat(Duration.between(from.getValue(), now)).isCloseTo(Duration.ofDays(7), Duration.ofMinutes(1));
+        assertThat(Duration.between(from.getValue(), now))
+                .isCloseTo(Duration.ofDays(7), Duration.ofMinutes(1));
     }
 
     @Test

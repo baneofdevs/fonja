@@ -25,7 +25,6 @@ import com.fonja.payout.entity.PayoutStatus;
 import com.fonja.payout.repository.BankAccountRepository;
 import com.fonja.payout.repository.PayoutRequestRepository;
 import com.fonja.user.entity.AuthProvider;
-import com.fonja.user.entity.Role;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import java.math.BigDecimal;
@@ -48,9 +47,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * What these tests are really about is money leaving twice, or leaving and not coming back.
  *
- * <p>The balance arithmetic itself lives in {@code LedgerServiceTest}; here the ledger is a mock and
- * what matters is that {@code PayoutService} calls it at the right moments — reserve on request,
- * reverse on failure, and never on a payout that was refused for some other reason.
+ * <p>The balance arithmetic itself lives in {@code LedgerServiceTest}; here the ledger is a mock
+ * and what matters is that {@code PayoutService} calls it at the right moments — reserve on
+ * request, reverse on failure, and never on a payout that was refused for some other reason.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -95,8 +94,7 @@ class PayoutServiceTest {
                 .thenReturn(Optional.of("ADESANYA OLUWATOBI JOSEPH"));
         givenBankAccountSaves();
 
-        BankAccountResponse response =
-                payoutService.linkBankAccount(CREATOR_ID, linkRequest());
+        BankAccountResponse response = payoutService.linkBankAccount(CREATOR_ID, linkRequest());
 
         assertThat(response.accountName()).isEqualTo("ADESANYA OLUWATOBI JOSEPH");
         assertThat(response.verified()).isTrue();
@@ -111,8 +109,7 @@ class PayoutServiceTest {
         when(payoutGateway.lookupAccountName(any(), any())).thenReturn(Optional.empty());
         givenBankAccountSaves();
 
-        BankAccountResponse response =
-                payoutService.linkBankAccount(CREATOR_ID, linkRequest());
+        BankAccountResponse response = payoutService.linkBankAccount(CREATOR_ID, linkRequest());
 
         assertThat(response.verified()).isFalse();
         assertThat(response.verifiedAt()).isNull();
@@ -307,15 +304,13 @@ class PayoutServiceTest {
 
         payoutService.dispatch(PAYOUT_ID);
 
-        ArgumentCaptor<PayoutInstruction> sent =
-                ArgumentCaptor.forClass(PayoutInstruction.class);
+        ArgumentCaptor<PayoutInstruction> sent = ArgumentCaptor.forClass(PayoutInstruction.class);
         verify(payoutGateway).send(sent.capture());
         // The amount sent is what the creator receives — Fonja's fee is already out of it, and is
         // never something the gateway sees.
         assertThat(sent.getValue().amount()).isEqualByComparingTo("5000.00");
         assertThat(sent.getValue().beneficiaryName()).isEqualTo("ADESANYA OLUWATOBI JOSEPH");
-        assertThat(sent.getValue().merchantReference())
-                .isEqualTo(payout.getMerchantReference());
+        assertThat(sent.getValue().merchantReference()).isEqualTo(payout.getMerchantReference());
     }
 
     // --- Settlement -----------------------------------------------------------------
@@ -373,7 +368,9 @@ class PayoutServiceTest {
 
     // --- Fixtures --------------------------------------------------------------------
 
-    /** Runs every callback inline, so the two-transaction dispatch can be tested without a database. */
+    /**
+     * Runs every callback inline, so the two-transaction dispatch can be tested without a database.
+     */
     private static TransactionTemplate immediateTransactions() {
         return new TransactionTemplate() {
             @Override

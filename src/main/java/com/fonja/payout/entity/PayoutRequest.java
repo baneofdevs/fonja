@@ -75,9 +75,9 @@ public class PayoutRequest {
      * on its own.
      *
      * <p>This is what stops a payout being sent twice. If the call times out we cannot tell whether
-     * CyberPay accepted it, and re-sending an accepted instruction pays the creator twice with money
-     * that was only reserved once. Stamping first means the automatic path takes at most one attempt
-     * per payout, ever, and anything uncertain waits for a human who can check.
+     * CyberPay accepted it, and re-sending an accepted instruction pays the creator twice with
+     * money that was only reserved once. Stamping first means the automatic path takes at most one
+     * attempt per payout, ever, and anything uncertain waits for a human who can check.
      */
     @Column(name = "dispatch_attempted_at")
     private Instant dispatchAttemptedAt;
@@ -142,9 +142,9 @@ public class PayoutRequest {
     }
 
     /**
-     * Terminal. The caller must reverse the ledger reserve — this class records the outcome and does
-     * not touch balances, but a {@code FAILED} payout whose entries were never reversed is money the
-     * creator has lost, so the two always happen together in {@code PayoutService}.
+     * Terminal. The caller must reverse the ledger reserve — this class records the outcome and
+     * does not touch balances, but a {@code FAILED} payout whose entries were never reversed is
+     * money the creator has lost, so the two always happen together in {@code PayoutService}.
      */
     public void markFailed(String reason) {
         requireNotTerminal("marked failed");

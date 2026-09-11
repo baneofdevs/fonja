@@ -57,8 +57,8 @@ public class PayoutConfig {
 
     /**
      * Longer than the collections read timeout. A transfer instruction is not idempotent from our
-     * side — a timeout leaves us unsure whether CyberPay accepted it — so it is worth waiting rather
-     * than giving up early and having to reconcile.
+     * side — a timeout leaves us unsure whether CyberPay accepted it — so it is worth waiting
+     * rather than giving up early and having to reconcile.
      */
     private Duration readTimeout = Duration.ofSeconds(30);
 

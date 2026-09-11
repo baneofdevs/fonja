@@ -4,8 +4,8 @@ package com.fonja.payout.entity;
  * Where a withdrawal has got to. Stored as a string, so adding a constant needs no migration.
  *
  * <p>Only {@link #FAILED} returns money to the creator's balance. The reserve is written the moment
- * a payout is {@link #REQUESTED} — see {@code LedgerService.recordWithdrawal} — so every other state
- * simply leaves it in place.
+ * a payout is {@link #REQUESTED} — see {@code LedgerService.recordWithdrawal} — so every other
+ * state simply leaves it in place.
  */
 public enum PayoutStatus {
 

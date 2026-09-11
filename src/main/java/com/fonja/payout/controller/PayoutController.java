@@ -61,8 +61,8 @@ public class PayoutController {
     /**
      * What the caller can withdraw right now, including the real maximum.
      *
-     * <p>Worth calling before offering a "withdraw everything" button: the flat fee comes out of the
-     * same balance, so the ceiling is always below {@code available}.
+     * <p>Worth calling before offering a "withdraw everything" button: the flat fee comes out of
+     * the same balance, so the ceiling is always below {@code available}.
      */
     @GetMapping("/quote")
     public CustomResponse<PayoutQuoteResponse> quote(@AuthenticationPrincipal Jwt jwt) {
