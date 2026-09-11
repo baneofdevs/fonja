@@ -63,6 +63,9 @@ class DonationServiceTest {
     private static final Long DONOR_ID = 1L;
     private static final BigDecimal AMOUNT = new BigDecimal("5000.00");
 
+    /** CyberPay's fee on {@link #AMOUNT}: 1.58% + ₦50, confirmed against a real staging charge. */
+    private static final BigDecimal CHARGE = new BigDecimal("129.00");
+
     @Mock private DonationRepository donationRepository;
     @Mock private CampaignService campaignService;
     @Mock private UserService userService;
@@ -266,6 +269,40 @@ class DonationServiceTest {
         // checkout URL is not a receipt.
         assertThat(donation.getStatus()).isEqualTo(DonationStatus.PENDING);
         verifyNoInteractions(ledgerService);
+    }
+
+    @Test
+    void quotesTheGatewayFeeOnTopOfTheDonation() {
+        // The donor pays 5,129 and Fonja is settled 5,000 — the charge rides on top rather than
+        // being deducted from the settlement, so the amount the ledger splits is untouched by it.
+        givenCheckoutSucceeds();
+
+        InitiateDonationResponse response =
+                donationService.initiate(
+                        DONOR_ID, new InitiateDonationRequest(CAMPAIGN_ID, AMOUNT));
+
+        assertThat(response.amount()).isEqualByComparingTo(AMOUNT);
+        assertThat(response.processingFee()).isEqualByComparingTo(CHARGE);
+        assertThat(response.totalPayable()).isEqualByComparingTo("5129.00");
+    }
+
+    @Test
+    void leavesTheTotalUnquotedWhenCyberPayOmitsTheCharge() {
+        // Better a client that shows the donation alone than one that shows a total we made up: the
+        // donor sees the real figure on CyberPay's page regardless, and a wrong number here would be
+        // worse than no number.
+        givenCheckoutSucceeds();
+        when(cyberPayClient.initiatePayment(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new CyberPayCheckout("KIN-1", "https://payment.cyberpay.ng/pay?ref=x", null));
+
+        InitiateDonationResponse response =
+                donationService.initiate(
+                        DONOR_ID, new InitiateDonationRequest(CAMPAIGN_ID, AMOUNT));
+
+        assertThat(response.amount()).isEqualByComparingTo(AMOUNT);
+        assertThat(response.processingFee()).isNull();
+        assertThat(response.totalPayable()).isNull();
     }
 
     @Test
@@ -539,7 +576,8 @@ class DonationServiceTest {
                                 new CyberPayCheckout(
                                         "KIN-" + invocation.getArgument(0),
                                         "https://payment.cyberpay.ng/pay?ref=x",
-                                        null));
+                                        // What CyberPay actually charges on ₦5,000: 1.58% + ₦50.
+                                        CHARGE));
         return saved;
     }
 

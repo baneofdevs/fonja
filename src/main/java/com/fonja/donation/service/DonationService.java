@@ -149,7 +149,7 @@ public class DonationService {
                 opened.getMerchantReference(),
                 checkout.transactionReference());
 
-        return InitiateDonationResponse.from(opened, checkout.redirectUrl());
+        return InitiateDonationResponse.from(opened, checkout.redirectUrl(), checkout.charge());
     }
 
     /**
