@@ -5,16 +5,11 @@ spring:
   datasource:
     # allowPublicKeyRetrieval: MySQL 8 uses caching_sha2_password, which needs the
     # server's RSA public key to complete a first authentication without TLS.
-    # Development default only — production overrides SPRING_DATASOURCE_URL with
-    # sslMode=REQUIRED and drops this flag.
-    # MYSQL_HOST_PORT matches the host port the MySQL container is published on
-    # (docker-compose.yml), so a developer with a system MySQL already on 3306
-    # only has to set it in one place. The app container ignores this entirely:
-    # compose passes it an explicit SPRING_DATASOURCE_URL pointing at mysql:3306
-    # over the private network.
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:${MYSQL_HOST_PORT:3306}/fonja?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC}
-    username: ${DB_USERNAME:fonja}
-    password: ${DB_PASSWORD:changeme}
+    # Supplied by the deployment environment. In Compose this points to MySQL
+    # over the private network; outside Compose it should use the managed DB URL.
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
@@ -37,14 +32,10 @@ spring:
       client:
         registration:
           google:
-            # Placeholder rather than an empty string: Spring Boot rejects an
-            # empty client id at bean creation, which would stop the whole app
-            # from starting just because nobody had registered a Google client
-            # yet. With the placeholder the app runs, /api/** still validates
-            # tokens, and only the handshake itself fails — loudly, and with a
-            # WARN at startup from StartupConfigCheck.
-            client-id: ${GOOGLE_CLIENT_ID:google-client-id-not-configured}
-            client-secret: ${GOOGLE_CLIENT_SECRET:google-client-secret-not-configured}
+            # Required from the deployment environment because Spring Boot
+            # rejects an empty client id during bean creation.
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
             scope:
               - openid
               - email
@@ -63,7 +54,7 @@ fonja:
     # Unset: the login handler returns the token as JSON so the flow can be
     # tested before a frontend exists. Set this to the frontend callback and it
     # redirects with ?token=... instead.
-    login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
+    # login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
 
   ledger:
     # Fonja's cut of every donation, and the flat fee on every withdrawal. Changing either affects
@@ -73,7 +64,7 @@ fonja:
     withdrawal-fee: ${FONJA_LEDGER_WITHDRAWAL_FEE:200.00}
 
   cyberpay:
-    base-url: ${CYBERPAY_BASE_URL:https://payment-api.staging.cyberpay.ng}
+    base-url: ${CYBERPAY_BASE_URL}
     # Also the webhook signing key — CyberPay HMAC-SHA512s each notification with it. No default:
     # a blank key would "verify" signatures anyone could compute, so the webhook rejects every
     # request (503) until this is set, and logs why.
@@ -82,20 +73,50 @@ fonja:
     # Sent with every payment, so each environment notifies itself. Must be reachable from the
     # public internet — in development that means a tunnel, since CyberPay cannot post to
     # localhost. Without one, checkout still works and the donation simply stays PENDING.
-    webhook-url: ${CYBERPAY_WEBHOOK_URL:http://localhost:8080/api/v1/donations/webhook}
+    webhook-url: ${CYBERPAY_WEBHOOK_URL}
     # Where the donor's browser lands after checkout. Must already contain a query string:
     # CyberPay appends "&status=Completed" rather than "?status=Completed", so a bare path comes
     # back as ".../donation-complete&status=Completed" — one URL, no query, and the page 404s.
-    return-url: ${CYBERPAY_RETURN_URL:http://localhost:8080/donation-complete?from=cyberpay}
+    return-url: ${CYBERPAY_RETURN_URL}
     connect-timeout: ${CYBERPAY_CONNECT_TIMEOUT:5s}
     read-timeout: ${CYBERPAY_READ_TIMEOUT:15s}
+
+  payout:
+    # CyberPay's PayOut API is a separate service from the one that takes donations — a different
+    # host entirely, not another path. Collections is payment-api.staging.cyberpay.ng; payouts are
+    # on stagingserv.cyberpay.ng/payoutserv, which CyberPay give you directly. Their Postman
+    # collection writes every payout call as {{PAYOUT_BASE_URL}}/... and the token call as
+    # {{AUTHORIZATION_URL}}/oauth2/token, but declares neither variable, so both have to be asked
+    # for. Auth is OAuth2 client_credentials — a bearer token from the authorization server — not
+    # the ApiKey header collections uses.
+    #
+    # Blank means automatic disbursement is off. Withdrawals still work: the ledger reserves the
+    # money when a creator asks, the payout sits REQUESTED, and an admin settles it through
+    # POST /api/v1/payouts/admin/{id}/paid. Nothing is lost by leaving this unset.
+    base-url: ${CYBERPAY_PAYOUT_BASE_URL:}
+    authorization-url: ${CYBERPAY_PAYOUT_AUTH_URL:}
+    client-id: ${CYBERPAY_PAYOUT_CLIENT_ID:}
+    client-secret: ${CYBERPAY_PAYOUT_CLIENT_SECRET:}
+    # The wallet payouts are debited from. An opaque GUID from CyberPay — and note it is still an
+    # open question whether this is the same pot donations settle into. Ask them before going live.
+    wallet-code: ${CYBERPAY_PAYOUT_WALLET_CODE:}
+    wallet-type: ${CYBERPAY_PAYOUT_WALLET_TYPE:Business}
+    # What shows on the creator's bank statement. Nigerian banks truncate hard — keep it short.
+    sender-name: ${FONJA_PAYOUT_SENDER_NAME:FONJA}
+    # Payouts above this are left for an admin instead of going out automatically, so a bug drains
+    # the wallet one small instruction at a time rather than all at once. 0 removes the ceiling.
+    max-automatic-amount: ${FONJA_PAYOUT_MAX_AUTOMATIC:200000.00}
+    connect-timeout: ${CYBERPAY_PAYOUT_CONNECT_TIMEOUT:5s}
+    # Longer than the collections timeout on purpose: a transfer instruction cannot be safely
+    # retried, so waiting for an answer beats giving up and not knowing whether it was accepted.
+    read-timeout: ${CYBERPAY_PAYOUT_READ_TIMEOUT:30s}
 
   storage:
     local:
       # Placeholder implementation. Local disk is not durable across container
       # restarts and is not shared between instances — must move to object storage
       # before any multi-instance deployment. See technical spec §6.
-      base-path: ${STORAGE_LOCAL_BASE_PATH:./data/fonja-documents}
+      base-path: ${STORAGE_LOCAL_BASE_PATH}
 
 logging:
   level:

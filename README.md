@@ -56,24 +56,21 @@ this is migrated to object storage.
 
 ```
 cp .env.example .env          # then fill in FONJA_AUTH_JWT_SECRET (openssl rand -base64 48)
-docker compose up -d mysql    # MySQL only; set MYSQL_HOST_PORT if 3306 is taken
+docker compose up -d mysql    # MySQL only
 
 set -a; . ./.env; set +a      # see below — Maven does not read .env on its own
 ./mvnw spring-boot:run
 ```
 
-Docker Compose loads `.env` automatically; Maven does not. Without that
-`set -a` line the app falls back to the defaults baked into `application.yml`
-— password `changeme` on port 3306 — and if you have a system MySQL on 3306 it
-will connect to *that* instead of the container and fail with
-`Access denied for user 'fonja'@'localhost' (using password: YES)`.
+Docker Compose loads `.env` automatically; Maven does not. The application
+configuration has no database, OAuth, or payment defaults, so missing values
+fail at startup rather than silently connecting to the wrong environment.
 
 Or run everything in containers with `docker compose up -d`.
 
-Google sign-in needs a real client from the Google Cloud console with
-`http://localhost:8080/login/oauth2/code/google` as an authorised redirect URI.
-Without one the app still starts and `/api/**` still validates tokens; only the
-`/oauth2/authorization/google` handshake is unusable.
+Google sign-in needs a real client from the Google Cloud console with the
+production callback URL in its authorised redirect URIs. Configure the
+frontend callback through `FONJA_AUTH_LOGIN_REDIRECT_URI`.
 
 ## Toolchain notes
 
