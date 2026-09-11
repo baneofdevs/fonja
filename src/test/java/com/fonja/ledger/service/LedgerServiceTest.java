@@ -308,7 +308,8 @@ class LedgerServiceTest {
     }
 
     private PayoutRequest payoutRequest(BigDecimal amount) {
-        PayoutRequest request = new PayoutRequest(creator(), amount, new BigDecimal("200.00"));
+        PayoutRequest request =
+                new PayoutRequest(creator(), null, amount, new BigDecimal("200.00"), "FNJW-test");
         ReflectionTestUtils.setField(request, "id", PAYOUT_ID);
         return request;
     }
