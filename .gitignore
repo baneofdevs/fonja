@@ -7,7 +7,10 @@ target/
 src/main/resources/application-local.yml
 
 ### Verification / evidence documents written by LocalStorageServiceImpl ###
+# These are real people's ID scans. STORAGE_LOCAL_BASE_PATH decides where they land, so ignore both
+# the old default and the current one — a path change must never quietly start committing them.
 data/
+fonja-documents/
 
 ### IDE ###
 .idea/

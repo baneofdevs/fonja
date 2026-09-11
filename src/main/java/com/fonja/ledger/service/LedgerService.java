@@ -45,6 +45,17 @@ public class LedgerService {
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int MONEY_SCALE = 2;
 
+    /**
+     * The entry types that are Fonja's income, and the one that refunds it. Listed here rather than
+     * derived, because there is no property of an entry that identifies platform revenue — a
+     * withdrawal fee is written against the creator exactly like the debit beside it.
+     */
+    private static final List<LedgerEntryType> PLATFORM_REVENUE_TYPES =
+            List.of(
+                    LedgerEntryType.PLATFORM_FEE,
+                    LedgerEntryType.WITHDRAWAL_FEE,
+                    LedgerEntryType.WITHDRAWAL_FEE_REVERSAL);
+
     private final LedgerEntryRepository ledgerEntryRepository;
     private final UserService userService;
     private final LedgerConfig config;
@@ -234,10 +245,24 @@ public class LedgerService {
                         .subtract(total(totals, LedgerEntryType.WITHDRAWAL_FEE_REVERSAL)));
     }
 
-    /** Fonja's own revenue — the entries written with no beneficiary. */
+    /**
+     * Fonja's own revenue: the 7% cut of donations plus the flat fee on withdrawals, net of the
+     * fees refunded on failed ones.
+     *
+     * <p>Summed explicitly rather than through {@link #netOf}, because {@link LedgerEntryType}'s
+     * direction is written from the <em>beneficiary's</em> point of view and both fee types are
+     * inverted from Fonja's. A withdrawal fee is a DEBIT — it leaves the creator's balance — and it
+     * is income here; its reversal is a CREDIT to them and a deduction here. Folding these with the
+     * generic net would subtract Fonja's revenue instead of adding it.
+     */
     @Transactional(readOnly = true)
     public BigDecimal getPlatformRevenue() {
-        return netOf(totalsByType(ledgerEntryRepository.sumByTypeForPlatform()));
+        Map<LedgerEntryType, BigDecimal> totals =
+                totalsByType(ledgerEntryRepository.sumByTypeForPlatform(PLATFORM_REVENUE_TYPES));
+
+        return total(totals, LedgerEntryType.PLATFORM_FEE)
+                .add(total(totals, LedgerEntryType.WITHDRAWAL_FEE))
+                .subtract(total(totals, LedgerEntryType.WITHDRAWAL_FEE_REVERSAL));
     }
 
     /** Fonja's cut of a gross amount, rounded to the currency's smallest unit. */

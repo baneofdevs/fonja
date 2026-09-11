@@ -3,6 +3,7 @@ package com.fonja.ledger.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -244,11 +245,36 @@ class LedgerServiceTest {
     }
 
     @Test
-    void platformRevenueSumsTheEntriesWithNoBeneficiary() {
-        when(ledgerEntryRepository.sumByTypeForPlatform())
-                .thenReturn(totals(Map.of(LedgerEntryType.PLATFORM_FEE, new BigDecimal("700.00"))));
+    void platformRevenueCountsDonationCutAndWithdrawalFeesAlike() {
+        // The withdrawal fee is the half that used to be missed. It is written against the creator,
+        // because it has to come out of their balance — so a "where beneficiary is null" query
+        // counts the 7% and silently drops every ₦200 of it.
+        when(ledgerEntryRepository.sumByTypeForPlatform(anyList()))
+                .thenReturn(
+                        totals(
+                                Map.of(
+                                        LedgerEntryType.PLATFORM_FEE, new BigDecimal("700.00"),
+                                        LedgerEntryType.WITHDRAWAL_FEE, new BigDecimal("600.00"))));
 
-        assertThat(ledgerService.getPlatformRevenue()).isEqualByComparingTo("700.00");
+        assertThat(ledgerService.getPlatformRevenue()).isEqualByComparingTo("1300.00");
+    }
+
+    @Test
+    void platformRevenueGivesBackTheFeeOnAReversedWithdrawal() {
+        // Fonja does not keep the flat fee on a failure, so a reversal has to come off revenue —
+        // and it is a CREDIT to the creator, which the generic net would have added here instead.
+        when(ledgerEntryRepository.sumByTypeForPlatform(anyList()))
+                .thenReturn(
+                        totals(
+                                Map.of(
+                                        LedgerEntryType.PLATFORM_FEE,
+                                        new BigDecimal("700.00"),
+                                        LedgerEntryType.WITHDRAWAL_FEE,
+                                        new BigDecimal("600.00"),
+                                        LedgerEntryType.WITHDRAWAL_FEE_REVERSAL,
+                                        new BigDecimal("200.00"))));
+
+        assertThat(ledgerService.getPlatformRevenue()).isEqualByComparingTo("1100.00");
     }
 
     // --- Fixtures --------------------------------------------------------------------
@@ -282,7 +308,8 @@ class LedgerServiceTest {
     }
 
     private PayoutRequest payoutRequest(BigDecimal amount) {
-        PayoutRequest request = new PayoutRequest(creator(), amount, new BigDecimal("200.00"));
+        PayoutRequest request =
+                new PayoutRequest(creator(), null, amount, new BigDecimal("200.00"), "FNJW-test");
         ReflectionTestUtils.setField(request, "id", PAYOUT_ID);
         return request;
     }
