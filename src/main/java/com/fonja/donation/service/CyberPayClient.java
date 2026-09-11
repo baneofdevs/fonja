@@ -170,7 +170,11 @@ public class CyberPayClient {
         return new CyberPayTransaction(
                 data.path("reference").asString(transactionReference),
                 data.path("status").asString(null),
-                toNaira(data.path("amount")));
+                toNaira(data.path("amount")),
+                // Absent from their documented response, so treat it as a bonus: a missing node
+                // reads as null and the donation simply keeps a null payment method, which is
+                // display metadata and nothing the ledger depends on.
+                data.path("paymentChannel").asString(null));
     }
 
     /**

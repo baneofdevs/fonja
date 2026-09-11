@@ -67,6 +67,8 @@ class DonationControllerTest {
                                 12L,
                                 CAMPAIGN_ID,
                                 new BigDecimal("5000.00"),
+                                new BigDecimal("129.00"),
+                                new BigDecimal("5129.00"),
                                 "NGN",
                                 "FNJ0123456789abcdef",
                                 "https://payment.cyberpay.ng/pay?reference=KIN-1"));
@@ -80,7 +82,14 @@ class DonationControllerTest {
                 .andExpect(jsonPath("$.responseCode").value("00"))
                 .andExpect(
                         jsonPath("$.responseData.checkoutUrl")
-                                .value("https://payment.cyberpay.ng/pay?reference=KIN-1"));
+                                .value("https://payment.cyberpay.ng/pay?reference=KIN-1"))
+                // The gateway fee reaches the client before the redirect, so the donor is told the
+                // real total up front rather than meeting it on CyberPay's page. The donation
+                // itself
+                // is unchanged — the fee rides on top and Fonja is settled the full 5,000.
+                .andExpect(jsonPath("$.responseData.amount").value(5000.00))
+                .andExpect(jsonPath("$.responseData.processingFee").value(129.00))
+                .andExpect(jsonPath("$.responseData.totalPayable").value(5129.00));
 
         // The donor id comes from the token's subject — there is no field in the request body that
         // could attribute a donation to someone else.

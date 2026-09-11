@@ -1,6 +1,7 @@
 package com.fonja.donation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -61,6 +62,9 @@ class DonationServiceTest {
     private static final Long CAMPAIGN_ID = 7L;
     private static final Long DONOR_ID = 1L;
     private static final BigDecimal AMOUNT = new BigDecimal("5000.00");
+
+    /** CyberPay's fee on {@link #AMOUNT}: 1.58% + ₦50, confirmed against a real staging charge. */
+    private static final BigDecimal CHARGE = new BigDecimal("129.00");
 
     @Mock private DonationRepository donationRepository;
     @Mock private CampaignService campaignService;
@@ -268,6 +272,42 @@ class DonationServiceTest {
     }
 
     @Test
+    void quotesTheGatewayFeeOnTopOfTheDonation() {
+        // The donor pays 5,129 and Fonja is settled 5,000 — the charge rides on top rather than
+        // being deducted from the settlement, so the amount the ledger splits is untouched by it.
+        givenCheckoutSucceeds();
+
+        InitiateDonationResponse response =
+                donationService.initiate(
+                        DONOR_ID, new InitiateDonationRequest(CAMPAIGN_ID, AMOUNT));
+
+        assertThat(response.amount()).isEqualByComparingTo(AMOUNT);
+        assertThat(response.processingFee()).isEqualByComparingTo(CHARGE);
+        assertThat(response.totalPayable()).isEqualByComparingTo("5129.00");
+    }
+
+    @Test
+    void leavesTheTotalUnquotedWhenCyberPayOmitsTheCharge() {
+        // Better a client that shows the donation alone than one that shows a total we made up: the
+        // donor sees the real figure on CyberPay's page regardless, and a wrong number here would
+        // be
+        // worse than no number.
+        givenCheckoutSucceeds();
+        when(cyberPayClient.initiatePayment(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new CyberPayCheckout(
+                                "KIN-1", "https://payment.cyberpay.ng/pay?ref=x", null));
+
+        InitiateDonationResponse response =
+                donationService.initiate(
+                        DONOR_ID, new InitiateDonationRequest(CAMPAIGN_ID, AMOUNT));
+
+        assertThat(response.amount()).isEqualByComparingTo(AMOUNT);
+        assertThat(response.processingFee()).isNull();
+        assertThat(response.totalPayable()).isNull();
+    }
+
+    @Test
     void commitsTheDonationBeforeCallingCyberPay() {
         // The ordering that makes an interrupted initiate recoverable: were the row saved after the
         // call, a crash in between would leave a live checkout page for a donation nobody has any
@@ -385,7 +425,123 @@ class DonationServiceTest {
         assertThat(alreadyBound.getGatewayReference()).isEqualTo(REFERENCE);
     }
 
+    // --- the sweep -------------------------------------------------------------------
+
+    @Test
+    void sweepSettlesAPaymentWhoseWebhookNeverArrived() {
+        // The reason the sweep exists. The donor paid; the notification was lost to a restart, an
+        // expired tunnel, or a bug. Without this the creator is never credited and nothing in the
+        // system ever notices.
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT);
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.SETTLED);
+
+        assertThat(donation.getStatus()).isEqualTo(DonationStatus.SUCCESS);
+        verify(ledgerService).recordDonation(donation);
+    }
+
+    @Test
+    void sweepTakesThePaymentChannelFromTheReQueryWhenThereIsNoWebhook() {
+        // The sweep has no notification to read a channel from, so the re-query is the only source.
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT, "Card");
+
+        donationService.reconcilePending(DONATION_ID);
+
+        assertThat(donation.getPaymentMethod()).isEqualTo(PaymentMethod.CARD);
+    }
+
+    @Test
+    void sweepClosesAnAbandonedCheckout() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Abandoned", BigDecimal.ZERO);
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.FAILED);
+
+        assertThat(donation.getStatus()).isEqualTo(DonationStatus.FAILED);
+        verify(ledgerService, never()).recordDonation(any());
+    }
+
+    @Test
+    void sweepNeverFailsADonationCyberPayHasNotDecidedOn() {
+        // The critical one. confirmFromWebhook ignores a notification for an already-FAILED
+        // donation, so a row wrongly closed here can never be settled again — an in-flight payment
+        // would become a permanently lost one.
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Pending", AMOUNT);
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.UNDECIDED);
+
+        assertThat(donation.getStatus()).isEqualTo(DonationStatus.PENDING);
+        verify(ledgerService, never()).recordDonation(any());
+    }
+
+    @Test
+    void sweepDoesNotThrowWhenCyberPayHasNoVerdict() {
+        // Same state that makes the webhook return 503, but there is nobody to ask for a retry
+        // here: the sweep runs again in an hour by itself, and throwing would only be noise in the
+        // job's log.
+        givenDonationById(pending());
+        givenCyberPaySays("Pending", AMOUNT);
+
+        assertThatCode(() -> donationService.reconcilePending(DONATION_ID))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void sweepLeavesADonationWithNoGatewayReferenceAlone() {
+        // Nothing to re-query with: CyberPay's API is keyed on their reference, not our
+        // MerchantRef.
+        // A webhook can still settle it, so it must not be closed.
+        Donation stranded = opened();
+        givenDonationById(stranded);
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.UNRESOLVABLE);
+
+        assertThat(stranded.getStatus()).isEqualTo(DonationStatus.PENDING);
+        verifyNoInteractions(cyberPayClient, ledgerService);
+    }
+
+    @Test
+    void sweepStandsDownWhenAWebhookGotThereFirst() {
+        Donation donation = pending();
+        ReflectionTestUtils.setField(donation, "status", DonationStatus.SUCCESS);
+        givenDonationById(donation);
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.ALREADY_SETTLED);
+
+        // No second re-query and no second ledger post: the webhook already did both.
+        verifyNoInteractions(cyberPayClient, ledgerService);
+    }
+
+    @Test
+    void sweepRefusesToCreditWhenTheAmountDisagrees() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", new BigDecimal("50.00"));
+
+        assertThat(donationService.reconcilePending(DONATION_ID))
+                .isEqualTo(DonationService.SettlementOutcome.AMOUNT_MISMATCH);
+
+        assertThat(donation.getStatus()).isEqualTo(DonationStatus.PENDING);
+        verify(ledgerService, never()).recordDonation(any());
+    }
+
     // --- helpers ---------------------------------------------------------------------
+
+    private void givenDonationById(Donation donation) {
+        when(donationRepository.findById(DONATION_ID)).thenReturn(Optional.of(donation));
+    }
 
     private void givenDonation(Donation donation) {
         when(donationRepository.findByGatewayReference(REFERENCE))
@@ -424,13 +580,18 @@ class DonationServiceTest {
                                 new CyberPayCheckout(
                                         "KIN-" + invocation.getArgument(0),
                                         "https://payment.cyberpay.ng/pay?ref=x",
-                                        null));
+                                        // What CyberPay actually charges on ₦5,000: 1.58% + ₦50.
+                                        CHARGE));
         return saved;
     }
 
     private void givenCyberPaySays(String status, BigDecimal amount) {
+        givenCyberPaySays(status, amount, null);
+    }
+
+    private void givenCyberPaySays(String status, BigDecimal amount, String channel) {
         when(cyberPayClient.requery(anyString()))
-                .thenReturn(new CyberPayTransaction(REFERENCE, status, amount));
+                .thenReturn(new CyberPayTransaction(REFERENCE, status, amount, channel));
     }
 
     private void assertGatewayUnavailable(

@@ -224,13 +224,23 @@ fonja/
 - [ ] Exact document types required per verification type (individual vs. business/NGO)
 - [ ] Platform fee split confirmation (7% / ₦200 — business-confirmed, not yet legally reviewed per BRD §19)
 - [ ] Timeline to migrate document storage from local filesystem to object storage — must happen before any multi-instance deployment
-- [ ] **Who absorbs CyberPay's charge.** A live staging donation of ₦100 came back with
-      `"Charge": 10000` — the same as the amount. The staging figure is clearly not real, but the
-      question it raises is: if CyberPay deducts their charge from what they settle to Fonja, then
-      Fonja receives less than the gross the ledger splits. The ledger credits the creator 93% of
-      the **gross**, so at small amounts Fonja's 7% may not cover the gateway fee at all, and Fonja
-      pays the difference out of its own pocket. Get the real fee schedule and decide whether the
-      7% is taken before or after it. **This is the last unmodelled money flow in the system.**
+- [x] ~~**Who absorbs CyberPay's charge.**~~ **Resolved 2026-08-28 — the donor does.** Derived from
+      six real staging transactions and exact on every one: `charge = 1.58% × amount + ₦50`, no cap
+      observed up to ₦113,000. The charge is added **on top** of the donation rather than deducted
+      from settlement, which the re-query response proves directly: it carries `amountAfterCharge`
+      alongside `amount`, and on both settled donations the two are *equal* — ₦5,000 sent, ₦5,000
+      settled, ₦129 charged. A donor choosing ₦10,000 is debited ₦10,208 and Fonja is settled the
+      full ₦10,000.
+
+      Consequences, all already reflected in the code: the ledger splitting the **gross** is correct;
+      Fonja's 7% is safe at every amount because it is never competing with the gateway fee; and
+      `DonationService` must keep comparing the re-query's `amount` against `Donation.amount`, never
+      `amountAfterCharge`. `InitiateDonationResponse` now returns `processingFee` and `totalPayable`
+      so a client can show the donor the real total before the redirect.
+
+      The earlier ₦100 donation that came back with `"Charge": 10000` is a stale or misread field,
+      not evidence: the formula predicts ₦51.58 there, and a flat ₦100 minimum is ruled out by a ₦700
+      donation charging ₦61.06.
 - [ ] **Refunds.** Not currently specified. Whether Fonja ever needs to refund a donor or freeze a
       fraudulent campaign's funds is what permanently rules `Splits` in or out (§4.4).
 - [ ] **BVN / NIN verification.** CyberPay exposes `POST /api/v1/bvn/verify` and `/api/v1/nin`. An
