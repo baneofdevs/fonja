@@ -51,10 +51,10 @@ fonja:
     jwt-secret: ${FONJA_AUTH_JWT_SECRET:}
     jwt-ttl-seconds: ${FONJA_AUTH_JWT_TTL_SECONDS:43200}
     jwt-issuer: fonja
-    # Unset: the login handler returns the token as JSON so the flow can be
-    # tested before a frontend exists. Set this to the frontend callback and it
-    # redirects with ?token=... instead.
-    # login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
+    # Where the login handler sends the browser after Google, with ?token=… appended —
+    # the frontend's /auth/callback. Unset, it returns the token as JSON instead, which is
+    # only useful for testing the flow without a frontend.
+    login-success-redirect-uri: ${FONJA_AUTH_LOGIN_REDIRECT_URI:}
 
   ledger:
     # Fonja's cut of every donation, and the flat fee on every withdrawal. Changing either affects

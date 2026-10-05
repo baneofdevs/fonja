@@ -44,6 +44,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(ResponseCode.VERIFICATION_REQUIRED, message);
     }
 
+    public static ApiException emailNotVerified(String message) {
+        return new ApiException(ResponseCode.EMAIL_NOT_VERIFIED, message);
+    }
+
     /**
      * For callers that authenticate themselves rather than through Spring Security — currently only
      * the CyberPay webhook, which proves who it is with a signature header.

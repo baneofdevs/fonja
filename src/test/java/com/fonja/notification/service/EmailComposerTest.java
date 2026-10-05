@@ -187,6 +187,28 @@ class EmailComposerTest {
         assertThat(email.html()).doesNotContain("href=").doesNotContain("logo.png");
     }
 
+    @Test
+    void theVerificationCodeIsInTheSubjectTheTextAndTheHtml() {
+        EmailComposer.Email email =
+                composer("https://fonja.test")
+                        .compose(new NotificationEvent.EmailVerificationCode(ADA, "482913", 15));
+
+        assertThat(email.subject()).startsWith("482913");
+        assertThat(email.body()).contains("482913").contains("15 minutes");
+        assertThat(email.html()).contains("482913");
+    }
+
+    @Test
+    void theResetEmailLinksToTheTokenUrl() {
+        String url = "https://fonja.test/reset-password?token=abc";
+        EmailComposer.Email email =
+                composer("https://fonja.test")
+                        .compose(new NotificationEvent.PasswordResetLink(ADA, url, 30));
+
+        assertThat(email.body()).contains(url);
+        assertThat(email.html()).contains("href=\"" + url + "\"");
+    }
+
     /**
      * Renders one of every email and writes it to {@code target/email-previews}, so the layout can
      * be checked in a browser after {@code ./mvnw test} without sending anything.
@@ -223,7 +245,10 @@ class EmailComposerTest {
                                 "GTBank",
                                 "******6789",
                                 false,
-                                "Account closed"));
+                                "Account closed"),
+                        new NotificationEvent.EmailVerificationCode(ADA, "482913", 15),
+                        new NotificationEvent.PasswordResetLink(
+                                ADA, "http://localhost:5173/reset-password?token=abc", 30));
 
         Path dir = Path.of("target", "email-previews");
         Files.createDirectories(dir);

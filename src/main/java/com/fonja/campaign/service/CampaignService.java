@@ -18,6 +18,7 @@ import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.notification.event.NotificationEvent;
 import com.fonja.notification.event.Recipient;
+import com.fonja.user.dto.UserResponse;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import com.fonja.verification.entity.VerificationStatus;
@@ -560,6 +561,7 @@ public class CampaignService {
                 .id(campaign.getId())
                 .creatorId(campaign.getCreator().getId())
                 .creatorName(campaign.getCreator().getFullName())
+                .creatorAvatarUrl(UserResponse.avatarUrl(campaign.getCreator().getAvatarMediaId()))
                 .title(campaign.getTitle())
                 .story(campaign.getStory())
                 .category(CategoryRef.from(campaign.getCategory()))

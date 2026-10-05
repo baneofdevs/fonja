@@ -2,7 +2,7 @@ package com.fonja.common.security;
 
 import com.fonja.common.config.OAuth2Config;
 import com.fonja.common.response.CustomResponse;
-import com.fonja.user.dto.UserResponse;
+import com.fonja.user.dto.LoginResponse;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -62,6 +62,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                         provider,
                         principal.getName(), // the `sub` claim
                         principal.getAttribute("email"),
+                        principal.getAttribute("given_name"),
+                        principal.getAttribute("family_name"),
                         principal.getAttribute("name"));
 
         String jwt = jwtService.issueToken(user);
@@ -83,12 +85,11 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(
                 response.getWriter(),
-                CustomResponse.success(new LoginResponse(jwt, UserResponse.from(user))));
+                CustomResponse.success(
+                        new LoginResponse(jwt, userService.getProfile(user.getId()))));
     }
 
     private AuthProvider resolveProvider(String registrationId) {
         return AuthProvider.valueOf(registrationId.toUpperCase(Locale.ROOT));
     }
-
-    public record LoginResponse(String accessToken, UserResponse user) {}
 }

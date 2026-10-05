@@ -15,6 +15,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -70,6 +72,10 @@ public class SecurityConfig {
                                         // ledger, and it tolerates duplicates: CyberPay redelivers
                                         // hourly for 72 hours until it gets a 2xx. See spec §5.
                                         .requestMatchers("/api/v1/donations/webhook/**")
+                                        .permitAll()
+                                        // Sign-up, login, code and password-reset routes: each is
+                                        // how a caller without a token gets one.
+                                        .requestMatchers("/api/v1/auth/**")
                                         .permitAll()
                                         // One pattern rather than a rule per module: a new module's
                                         // admin endpoints are protected the moment they are
@@ -136,6 +142,15 @@ public class SecurityConfig {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
         return converter;
+    }
+
+    /**
+     * BCrypt at the default strength (10): about 100 ms a hash, slow enough to make a stolen table
+     * expensive to crack and fast enough that login does not drag.
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean

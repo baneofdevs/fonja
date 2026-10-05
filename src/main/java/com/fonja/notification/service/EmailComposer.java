@@ -6,6 +6,8 @@ import com.fonja.notification.event.NotificationEvent.CampaignCompleted;
 import com.fonja.notification.event.NotificationEvent.CampaignReviewed;
 import com.fonja.notification.event.NotificationEvent.DonationReceipt;
 import com.fonja.notification.event.NotificationEvent.DonationReceived;
+import com.fonja.notification.event.NotificationEvent.EmailVerificationCode;
+import com.fonja.notification.event.NotificationEvent.PasswordResetLink;
 import com.fonja.notification.event.NotificationEvent.VerificationReviewed;
 import com.fonja.notification.event.NotificationEvent.WithdrawalRequested;
 import com.fonja.notification.event.NotificationEvent.WithdrawalSettled;
@@ -81,6 +83,12 @@ public class EmailComposer {
         }
         if (event instanceof WithdrawalSettled e) {
             return e.paid() ? withdrawalPaid(e) : withdrawalFailed(e);
+        }
+        if (event instanceof EmailVerificationCode e) {
+            return emailVerificationCode(e);
+        }
+        if (event instanceof PasswordResetLink e) {
+            return passwordReset(e);
         }
         throw new IllegalArgumentException("No email template for " + event.getClass().getName());
     }
@@ -255,6 +263,30 @@ public class EmailComposer {
                                 + " Check your bank details and try again, or contact us if the"
                                 + " reason is unclear.")
                 .cta("Check your bank details", url("/dashboard/payouts"));
+    }
+
+    private Message emailVerificationCode(EmailVerificationCode e) {
+        return new Message(e.code() + " is your Fonja verification code", "Verify your email")
+                .preheader("Your code is " + e.code() + ".")
+                .paragraph("Enter this code on Fonja to verify your email address:")
+                .code(e.code())
+                .footnote("The code expires in " + e.validForMinutes() + " minutes.")
+                .footnote(
+                        "If you didn't create a Fonja account, you can ignore this email —"
+                                + " nothing happens without the code.");
+    }
+
+    private Message passwordReset(PasswordResetLink e) {
+        return new Message("Reset your Fonja password", "Reset your password")
+                .preheader("Choose a new password for your Fonja account.")
+                .paragraph(
+                        "We received a request to reset the password on your Fonja account. Use"
+                                + " the button below to choose a new one.")
+                .cta("Reset password", e.resetUrl())
+                .footnote("The link works once and expires in " + e.validForMinutes() + " minutes.")
+                .footnote(
+                        "If you didn't ask for this, ignore this email — your password stays the"
+                                + " same.");
     }
 
     // --- rendering ------------------------------------------------------------------

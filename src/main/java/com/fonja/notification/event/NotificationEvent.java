@@ -132,4 +132,24 @@ public sealed interface NotificationEvent {
                     : NotificationType.WITHDRAWAL_FAILED;
         }
     }
+
+    /**
+     * To someone signing up with a password: the six-digit code that proves the inbox is theirs.
+     */
+    record EmailVerificationCode(Recipient recipient, String code, int validForMinutes)
+            implements NotificationEvent {
+        @Override
+        public NotificationType type() {
+            return NotificationType.EMAIL_VERIFICATION;
+        }
+    }
+
+    /** To someone who forgot their password: a single-use link to choose a new one. */
+    record PasswordResetLink(Recipient recipient, String resetUrl, int validForMinutes)
+            implements NotificationEvent {
+        @Override
+        public NotificationType type() {
+            return NotificationType.PASSWORD_RESET;
+        }
+    }
 }

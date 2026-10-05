@@ -25,6 +25,9 @@ public class CampaignResponse {
     /** The creator's display name, shown on every public card and detail page. */
     private String creatorName;
 
+    /** The creator's profile photo, or null for initials. */
+    private String creatorAvatarUrl;
+
     private String title;
 
     private String story;
