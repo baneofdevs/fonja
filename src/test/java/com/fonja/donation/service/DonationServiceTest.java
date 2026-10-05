@@ -6,20 +6,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fonja.campaign.entity.BeneficiaryType;
 import com.fonja.campaign.entity.Campaign;
-import com.fonja.campaign.entity.CampaignCategory;
+import com.fonja.campaign.entity.Category;
 import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
 import com.fonja.donation.dto.CyberPayCheckout;
 import com.fonja.donation.dto.CyberPayTransaction;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.dto.DonationSummaryResponse;
+import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
 import com.fonja.donation.entity.Donation;
@@ -27,6 +32,7 @@ import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -41,6 +47,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -71,6 +80,7 @@ class DonationServiceTest {
     @Mock private UserService userService;
     @Mock private CyberPayClient cyberPayClient;
     @Mock private LedgerService ledgerService;
+    @Mock private ApplicationEventPublisher events;
 
     private DonationService donationService;
 
@@ -83,7 +93,8 @@ class DonationServiceTest {
                         userService,
                         cyberPayClient,
                         ledgerService,
-                        immediateTransactions());
+                        immediateTransactions(),
+                        events);
     }
 
     /**
@@ -537,6 +548,169 @@ class DonationServiceTest {
         verify(ledgerService, never()).recordDonation(any());
     }
 
+    // --- notifications -----------------------------------------------------------------
+
+    @Test
+    void settlementEmailsTheDonorAndTheCreatorAndChecksTheGoal() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        ArgumentCaptor<Object> published = ArgumentCaptor.forClass(Object.class);
+        verify(events, times(2)).publishEvent(published.capture());
+
+        NotificationEvent.DonationReceipt receipt =
+                (NotificationEvent.DonationReceipt) published.getAllValues().get(0);
+        assertThat(receipt.recipient().userId()).isEqualTo(DONOR_ID);
+        assertThat(receipt.recipient().email()).isEqualTo("a@b.com");
+        assertThat(receipt.campaignId()).isEqualTo(CAMPAIGN_ID);
+        assertThat(receipt.amount()).isEqualByComparingTo(AMOUNT);
+
+        NotificationEvent.DonationReceived received =
+                (NotificationEvent.DonationReceived) published.getAllValues().get(1);
+        assertThat(received.recipient().email()).isEqualTo("creator@b.com");
+        assertThat(received.donorName()).isEqualTo("A B");
+        assertThat(received.campaignTitle()).isEqualTo("Title");
+        verify(campaignService).completeIfGoalReached(CAMPAIGN_ID);
+    }
+
+    /** CyberPay redelivers hourly for 72 hours; that must not mean 72 receipts. */
+    @Test
+    void aRedeliveredSettlementSendsNothing() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        givenDonationById(donation);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        verifyNoInteractions(events);
+        verify(campaignService, never()).completeIfGoalReached(any());
+    }
+
+    @Test
+    void aFailedOrUndecidedSettlementSendsNothing() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Abandoned", BigDecimal.ZERO);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        verifyNoInteractions(events);
+    }
+
+    // --- reads -------------------------------------------------------------------------
+
+    @Test
+    void supporterListIsGatedOnTheCampaignsVisibility() {
+        when(campaignService.requireVisibleCampaign(null, CAMPAIGN_ID))
+                .thenThrow(ApiException.notFound("Campaign 7 not found"));
+
+        assertThatThrownBy(
+                        () ->
+                                donationService.campaignDonations(
+                                        null, CAMPAIGN_ID, PageRequest.of(0, 20)))
+                .isInstanceOf(ApiException.class);
+        verify(donationRepository, never())
+                .findByCampaignIdAndStatusOrderByCreatedAtDesc(any(), any(), any());
+    }
+
+    @Test
+    void supporterListShowsSettledDonationsWithDonorNames() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        when(campaignService.requireVisibleCampaign(null, CAMPAIGN_ID)).thenReturn(campaign());
+        when(donationRepository.findByCampaignIdAndStatusOrderByCreatedAtDesc(
+                        eq(CAMPAIGN_ID), eq(DonationStatus.SUCCESS), any()))
+                .thenReturn(new PageImpl<>(List.of(donation)));
+
+        DonationResponse shown =
+                donationService
+                        .campaignDonations(null, CAMPAIGN_ID, PageRequest.of(0, 20))
+                        .getContent()
+                        .get(0);
+
+        assertThat(shown.donorName()).isEqualTo("A B");
+        assertThat(shown.amount()).isEqualByComparingTo(AMOUNT);
+    }
+
+    @Test
+    void aDonorsOwnListDoesNotRepeatTheirName() {
+        when(donationRepository.findByDonorIdOrderByCreatedAtDesc(eq(DONOR_ID), any()))
+                .thenReturn(new PageImpl<>(List.of(pending())));
+
+        DonationResponse shown =
+                donationService.myDonations(DONOR_ID, PageRequest.of(0, 20)).getContent().get(0);
+
+        assertThat(shown.donorName()).isNull();
+        assertThat(shown.campaignTitle()).isEqualTo("Title");
+        assertThat(shown.status()).isEqualTo(DonationStatus.PENDING);
+    }
+
+    @Test
+    void someoneElsesDonationReadsAsNotFound() {
+        givenDonationById(pending());
+
+        assertThatThrownBy(() -> donationService.getForDonor(99L, DONATION_ID))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getResponseCode())
+                .isEqualTo(ResponseCode.NOT_FOUND);
+    }
+
+    @Test
+    void confirmReQueriesAPendingDonationAndReturnsTheOutcome() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT);
+
+        DonationResponse result = donationService.confirm(DONOR_ID, DONATION_ID);
+
+        assertThat(result.status()).isEqualTo(DonationStatus.SUCCESS);
+        verify(ledgerService).recordDonation(donation);
+    }
+
+    @Test
+    void confirmLeavesADonationPendingWhenTheGatewayCannotAnswer() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        when(cyberPayClient.requery(REFERENCE))
+                .thenThrow(ApiException.gatewayUnavailable("CyberPay unreachable"));
+
+        DonationResponse result = donationService.confirm(DONOR_ID, DONATION_ID);
+
+        assertThat(result.status()).isEqualTo(DonationStatus.PENDING);
+    }
+
+    @Test
+    void confirmIsAPlainReadOnceSettled() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        givenDonationById(donation);
+
+        donationService.confirm(DONOR_ID, DONATION_ID);
+
+        verifyNoInteractions(cyberPayClient);
+    }
+
+    @Test
+    void summaryCombinesGivenAndReceived() {
+        when(donationRepository.totalsGivenBy(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(new DonationTotals(new BigDecimal("15000.00"), 3));
+        when(donationRepository.totalsReceivedBy(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(new DonationTotals(new BigDecimal("250000.00"), 12));
+        when(donationRepository.countDistinctDonorsFor(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(9L);
+
+        DonationSummaryResponse summary = donationService.summary(DONOR_ID);
+
+        assertThat(summary.totalGiven()).isEqualByComparingTo("15000.00");
+        assertThat(summary.donationsMade()).isEqualTo(3);
+        assertThat(summary.totalReceived()).isEqualByComparingTo("250000.00");
+        assertThat(summary.donationsReceived()).isEqualTo(12);
+        assertThat(summary.distinctDonors()).isEqualTo(9);
+    }
+
     // --- helpers ---------------------------------------------------------------------
 
     private void givenDonationById(Donation donation) {
@@ -630,7 +804,8 @@ class DonationServiceTest {
                         creator,
                         "Title",
                         "Story",
-                        CampaignCategory.MEDICAL,
+                        new Category("medical-health", "Medical & Health", null, 120),
+                        null,
                         BeneficiaryType.SELF,
                         "Nigeria",
                         null,

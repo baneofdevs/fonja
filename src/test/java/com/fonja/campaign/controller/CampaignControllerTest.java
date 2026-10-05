@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,15 +15,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fonja.campaign.dto.CampaignFeedSort;
 import com.fonja.campaign.dto.CampaignResponse;
+import com.fonja.campaign.dto.CategoryRef;
 import com.fonja.campaign.dto.CreateCampaignRequest;
 import com.fonja.campaign.entity.BeneficiaryType;
-import com.fonja.campaign.entity.CampaignCategory;
 import com.fonja.campaign.entity.CampaignLifecycleState;
 import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.config.SecurityConfig;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.security.OAuth2LoginSuccessHandler;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.entity.DonationStatus;
+import com.fonja.donation.service.DonationService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -63,6 +68,7 @@ class CampaignControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private CampaignService campaignService;
+    @MockitoBean private DonationService donationService;
 
     /** Only present so SecurityConfig's OAuth2 login chain can be built; never invoked here. */
     @MockitoBean private OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
@@ -82,7 +88,7 @@ class CampaignControllerTest {
                 .creatorId(USER_ID)
                 .title("Help me pay for surgery")
                 .story("Long story")
-                .category(CampaignCategory.MEDICAL)
+                .category(new CategoryRef("medical-health", "Medical & Health"))
                 .beneficiaryType(BeneficiaryType.SELF)
                 .country("Nigeria")
                 .goalAmount(BigDecimal.valueOf(500000))
@@ -98,7 +104,8 @@ class CampaignControllerTest {
         return new CreateCampaignRequest(
                 "Help me pay for surgery",
                 "Long story",
-                CampaignCategory.MEDICAL,
+                "medical-health",
+                null,
                 BeneficiaryType.SELF,
                 "Nigeria",
                 null,
@@ -128,7 +135,7 @@ class CampaignControllerTest {
     void createWithMissingRequiredFieldsFailsValidation() throws Exception {
         CreateCampaignRequest invalid =
                 new CreateCampaignRequest(
-                        "", null, null, null, "", null, null, null, false, null, null);
+                        "", null, null, null, null, "", null, null, null, false, null, null);
 
         mockMvc.perform(
                         post("/api/v1/campaigns")
@@ -157,6 +164,106 @@ class CampaignControllerTest {
         mockMvc.perform(get("/api/v1/campaigns/{id}", CAMPAIGN_ID).with(creator()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.responseCode").value("02"));
+    }
+
+    /** The campaign page is public: no token means an anonymous read, not a 401. */
+    @Test
+    void getByIdIsReadableWithoutAToken() throws Exception {
+        when(campaignService.getCampaignById(null, CAMPAIGN_ID))
+                .thenReturn(sampleResponse(CAMPAIGN_ID));
+
+        mockMvc.perform(get("/api/v1/campaigns/{id}", CAMPAIGN_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseData.id").value(CAMPAIGN_ID));
+
+        verify(campaignService).getCampaignById(isNull(), eq(CAMPAIGN_ID));
+    }
+
+    @Test
+    void aCampaignsSupportersAreReadableWithoutAToken() throws Exception {
+        when(donationService.campaignDonations(isNull(), eq(CAMPAIGN_ID), any()))
+                .thenReturn(
+                        new PageImpl<>(
+                                List.of(
+                                        new DonationResponse(
+                                                1L,
+                                                CAMPAIGN_ID,
+                                                "Help me pay for surgery",
+                                                "Ada Obi",
+                                                new BigDecimal("5000.00"),
+                                                "NGN",
+                                                null,
+                                                DonationStatus.SUCCESS,
+                                                Instant.now()))));
+
+        mockMvc.perform(get("/api/v1/campaigns/{id}/donations", CAMPAIGN_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseData.content[0].donorName").value("Ada Obi"));
+    }
+
+    // --- Public feed --------------------------------------------------------------------
+
+    @Test
+    void feedIsPublicAndDefaultsToNewest() throws Exception {
+        when(campaignService.publicFeed(isNull(), isNull(), eq(CampaignFeedSort.NEWEST), any()))
+                .thenReturn(new PageImpl<>(List.of(sampleResponse(CAMPAIGN_ID))));
+
+        mockMvc.perform(get("/api/v1/campaigns"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseCode").value("00"))
+                .andExpect(jsonPath("$.responseData.content[0].id").value(CAMPAIGN_ID))
+                // The paged shape a client can rely on — see FonjaApplication.
+                .andExpect(jsonPath("$.responseData.page.totalElements").value(1))
+                .andExpect(jsonPath("$.responseData.page.number").value(0));
+    }
+
+    @Test
+    void feedPassesFiltersAndSortThrough() throws Exception {
+        when(campaignService.publicFeed(any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(
+                        get("/api/v1/campaigns")
+                                .param("category", "education")
+                                .param("q", "lagos")
+                                .param("sort", "MOST_RAISED")
+                                .param("page", "3")
+                                .param("size", "12"))
+                .andExpect(status().isOk());
+
+        verify(campaignService)
+                .publicFeed(
+                        eq("education"),
+                        eq("lagos"),
+                        eq(CampaignFeedSort.MOST_RAISED),
+                        argThat(p -> p.getPageNumber() == 3 && p.getPageSize() == 12));
+    }
+
+    @Test
+    void feedRejectsAnUnknownSort() throws Exception {
+        mockMvc.perform(get("/api/v1/campaigns").param("sort", "TRENDING"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void feedPageSizeIsClampedToTheMaximum() throws Exception {
+        when(campaignService.publicFeed(any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/v1/campaigns").param("size", "5000")).andExpect(status().isOk());
+
+        verify(campaignService)
+                .publicFeed(any(), any(), any(), argThat(p -> p.getPageSize() == 100));
+    }
+
+    /** Only the two reads are public; creating a campaign still needs a token. */
+    @Test
+    void createStillRequiresAToken() throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/campaigns")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(validCreateRequest())))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

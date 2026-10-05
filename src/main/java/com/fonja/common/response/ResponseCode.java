@@ -10,6 +10,7 @@ public enum ResponseCode {
     FORBIDDEN("04", "Not permitted", HttpStatus.FORBIDDEN),
     CONFLICT("05", "Request conflicts with current state", HttpStatus.CONFLICT),
     VERIFICATION_REQUIRED("06", "Creator verification required", HttpStatus.FORBIDDEN),
+    EMAIL_NOT_VERIFIED("07", "Email address not verified", HttpStatus.FORBIDDEN),
 
     STORAGE_ERROR("20", "Document storage failure", HttpStatus.INTERNAL_SERVER_ERROR),
     // 503 rather than 500 on purpose: this is the code the CyberPay webhook returns when it cannot
