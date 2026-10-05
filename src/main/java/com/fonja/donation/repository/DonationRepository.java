@@ -91,4 +91,14 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
                     + " where d.campaign.creator.id = :userId and d.status = :status")
     long countDistinctDonorsFor(
             @Param("userId") Long userId, @Param("status") DonationStatus status);
+
+    /** Which of these users have a settled donation to the campaign — one query for a page. */
+    @Query(
+            "select distinct d.donor.id from Donation d"
+                    + " where d.campaign.id = :campaignId and d.donor.id in :userIds"
+                    + " and d.status = :status")
+    List<Long> findDonorIdsAmong(
+            @Param("campaignId") Long campaignId,
+            @Param("userIds") Collection<Long> userIds,
+            @Param("status") DonationStatus status);
 }

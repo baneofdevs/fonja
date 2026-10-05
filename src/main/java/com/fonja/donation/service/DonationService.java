@@ -21,7 +21,10 @@ import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -245,6 +248,19 @@ public class DonationService {
                 .findByCampaignIdAndStatusOrderByCreatedAtDesc(
                         campaignId, DonationStatus.SUCCESS, pageable)
                 .map(DonationResponse::withDonor);
+    }
+
+    /**
+     * Which of {@code userIds} have given to the campaign, for the "Donated" badge on comments.
+     * Settled donations only — a pending checkout is not yet a gift.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> donorsAmong(Long campaignId, Collection<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(
+                donationRepository.findDonorIdsAmong(campaignId, userIds, DonationStatus.SUCCESS));
     }
 
     @Transactional(readOnly = true)

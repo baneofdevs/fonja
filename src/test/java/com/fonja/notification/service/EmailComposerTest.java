@@ -248,7 +248,14 @@ class EmailComposerTest {
                                 "Account closed"),
                         new NotificationEvent.EmailVerificationCode(ADA, "482913", 15),
                         new NotificationEvent.PasswordResetLink(
-                                ADA, "http://localhost:5173/reset-password?token=abc", 30));
+                                ADA, "http://localhost:5173/reset-password?token=abc", 30),
+                        new NotificationEvent.CampaignCommentPosted(
+                                ADA,
+                                42L,
+                                "Help Ada finish her final year",
+                                9L,
+                                "Tunde Bello",
+                                "Rooting for you, Ada!"));
 
         Path dir = Path.of("target", "email-previews");
         Files.createDirectories(dir);

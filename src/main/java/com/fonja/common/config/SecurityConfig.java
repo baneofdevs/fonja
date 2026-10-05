@@ -96,6 +96,7 @@ public class SecurityConfig {
                                                 "/api/v1/campaigns",
                                                 "/api/v1/campaigns/{campaignId:\\d+}",
                                                 "/api/v1/campaigns/{campaignId:\\d+}/donations",
+                                                "/api/v1/campaigns/{campaignId:\\d+}/comments",
                                                 "/api/v1/media/{mediaId:\\d+}",
                                                 "/api/v1/categories")
                                         .permitAll()

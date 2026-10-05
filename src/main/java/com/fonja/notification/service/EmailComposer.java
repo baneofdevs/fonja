@@ -2,6 +2,7 @@ package com.fonja.notification.service;
 
 import com.fonja.notification.config.NotificationConfig;
 import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.NotificationEvent.CampaignCommentPosted;
 import com.fonja.notification.event.NotificationEvent.CampaignCompleted;
 import com.fonja.notification.event.NotificationEvent.CampaignReviewed;
 import com.fonja.notification.event.NotificationEvent.DonationReceipt;
@@ -89,6 +90,9 @@ public class EmailComposer {
         }
         if (event instanceof PasswordResetLink e) {
             return passwordReset(e);
+        }
+        if (event instanceof CampaignCommentPosted e) {
+            return commentPosted(e);
         }
         throw new IllegalArgumentException("No email template for " + event.getClass().getName());
     }
@@ -287,6 +291,18 @@ public class EmailComposer {
                 .footnote(
                         "If you didn't ask for this, ignore this email — your password stays the"
                                 + " same.");
+    }
+
+    private Message commentPosted(CampaignCommentPosted e) {
+        String who =
+                e.commenterName() == null || e.commenterName().isBlank()
+                        ? "Someone"
+                        : e.commenterName();
+        return new Message(who + " commented on " + e.campaignTitle(), "New comment")
+                .preheader("\"" + e.excerpt() + "\"")
+                .paragraph(who + " left a comment on \"" + e.campaignTitle() + "\":")
+                .paragraph("\"" + e.excerpt() + "\"")
+                .cta("Reply", url("/campaigns/" + e.campaignId() + "?tab=comments"));
     }
 
     // --- rendering ------------------------------------------------------------------

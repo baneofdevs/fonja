@@ -152,4 +152,22 @@ public sealed interface NotificationEvent {
             return NotificationType.PASSWORD_RESET;
         }
     }
+
+    /**
+     * To the creator: someone commented on, or replied on, their campaign. {@code excerpt} is
+     * already trimmed to something that fits a notification.
+     */
+    record CampaignCommentPosted(
+            Recipient recipient,
+            Long campaignId,
+            String campaignTitle,
+            Long commentId,
+            String commenterName,
+            String excerpt)
+            implements NotificationEvent {
+        @Override
+        public NotificationType type() {
+            return NotificationType.COMMENT_POSTED;
+        }
+    }
 }
