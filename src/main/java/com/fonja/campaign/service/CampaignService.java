@@ -1,11 +1,13 @@
 package com.fonja.campaign.service;
 
 import com.fonja.campaign.dto.CampaignResponse;
+import com.fonja.campaign.dto.CategoryRef;
 import com.fonja.campaign.dto.CreateCampaignRequest;
 import com.fonja.campaign.dto.UpdateCampaignRequest;
 import com.fonja.campaign.entity.Campaign;
 import com.fonja.campaign.entity.CampaignImage;
 import com.fonja.campaign.entity.CampaignLifecycleState;
+import com.fonja.campaign.entity.Category;
 import com.fonja.campaign.entity.IllegalCampaignStateException;
 import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
@@ -38,6 +40,7 @@ public class CampaignService {
     private final CampaignImageRepository campaignImageRepository;
     private final VerificationRequestRepository verificationRequestRepository;
     private final UserService userService;
+    private final CategoryService categoryService;
     private final ApplicationEventPublisher events;
 
     public CampaignService(
@@ -45,11 +48,13 @@ public class CampaignService {
             CampaignImageRepository campaignImageRepository,
             VerificationRequestRepository verificationRequestRepository,
             UserService userService,
+            CategoryService categoryService,
             ApplicationEventPublisher events) {
         this.campaignRepository = campaignRepository;
         this.campaignImageRepository = campaignImageRepository;
         this.verificationRequestRepository = verificationRequestRepository;
         this.userService = userService;
+        this.categoryService = categoryService;
         this.events = events;
     }
 
@@ -57,13 +62,15 @@ public class CampaignService {
     @Transactional
     public CampaignResponse createCampaign(Long userId, CreateCampaignRequest request) {
         User creator = userService.requireById(userId);
+        Category category = categoryService.requireAssignable(request.category());
 
         Campaign campaign =
                 new Campaign(
                         creator,
                         request.title(),
                         request.story(),
-                        request.category(),
+                        category,
+                        categoryNoteFor(category, request.categoryNote()),
                         request.beneficiaryType(),
                         request.country(),
                         request.location(),
@@ -176,7 +183,15 @@ public class CampaignService {
             campaign.setStory(request.story());
         }
         if (request.category() != null) {
-            campaign.setCategory(request.category());
+            campaign.setCategory(categoryService.requireAssignable(request.category()));
+            // A move out of "others" drops the note; a move into it keeps whatever is sent below.
+            if (!campaign.getCategory().isOthers()) {
+                campaign.setCategoryNote(null);
+            }
+        }
+        if (request.categoryNote() != null) {
+            campaign.setCategoryNote(
+                    categoryNoteFor(campaign.getCategory(), request.categoryNote()));
         }
         if (request.beneficiaryType() != null) {
             campaign.setBeneficiaryType(request.beneficiaryType());
@@ -395,7 +410,8 @@ public class CampaignService {
                 .creatorId(campaign.getCreator().getId())
                 .title(campaign.getTitle())
                 .story(campaign.getStory())
-                .category(campaign.getCategory())
+                .category(CategoryRef.from(campaign.getCategory()))
+                .categoryNote(campaign.getCategoryNote())
                 .beneficiaryType(campaign.getBeneficiaryType())
                 .country(campaign.getCountry())
                 .location(campaign.getLocation())
@@ -411,6 +427,23 @@ public class CampaignService {
                 .submittedAt(campaign.getSubmittedAt())
                 .approvedAt(campaign.getApprovedAt())
                 .build();
+    }
+
+    /**
+     * The note is the creator's label for a cause none of the categories fit, so it is only kept
+     * alongside "others"; anywhere else it would contradict the category it sits next to.
+     */
+    private static String categoryNoteFor(Category category, String note) {
+        if (note == null || note.isBlank()) {
+            return null;
+        }
+        if (!category.isOthers()) {
+            throw ApiException.badRequest(
+                    "categoryNote is only allowed with the '"
+                            + Category.OTHERS_SLUG
+                            + "' category");
+        }
+        return note.trim();
     }
 
     // Returns why a campaign isn't ready to go live, or null if it is.

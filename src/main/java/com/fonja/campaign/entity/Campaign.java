@@ -41,9 +41,14 @@ public class Campaign {
     private String story;
 
     @Setter
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private CampaignCategory category;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
+
+    /** Free-text label, only when {@link #category} is "others" — the creator's own word for it. */
+    @Setter
+    @Column(name = "category_note", length = 60)
+    private String categoryNote;
 
     @Setter
     @Enumerated(EnumType.STRING)
@@ -112,7 +117,8 @@ public class Campaign {
             User creator,
             String title,
             String story,
-            CampaignCategory category,
+            Category category,
+            String categoryNote,
             BeneficiaryType beneficiaryType,
             String country,
             String location,
@@ -125,6 +131,7 @@ public class Campaign {
         this.title = title;
         this.story = story;
         this.category = category;
+        this.categoryNote = categoryNote;
         this.beneficiaryType = beneficiaryType;
         this.country = country;
         this.location = location;

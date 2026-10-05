@@ -1,7 +1,6 @@
 package com.fonja.campaign.dto;
 
 import com.fonja.campaign.entity.BeneficiaryType;
-import com.fonja.campaign.entity.CampaignCategory;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
@@ -18,7 +17,11 @@ public record CreateCampaignRequest(
         @NotBlank(message = "story is required")
                 @Size(max = 20000, message = "story must be at most 20000 characters")
                 String story,
-        @NotNull(message = "category is required") CampaignCategory category,
+        @NotBlank(message = "category is required")
+                @Size(max = 60, message = "category must be at most 60 characters")
+                String category,
+        /** Only accepted when {@code category} is "others". */
+        @Size(max = 60, message = "categoryNote must be at most 60 characters") String categoryNote,
         @NotNull(message = "beneficiaryType is required") BeneficiaryType beneficiaryType,
         @NotBlank(message = "country is required")
                 @Size(max = 100, message = "country must be at most 100 characters")

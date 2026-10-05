@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.fonja.campaign.entity.BeneficiaryType;
 import com.fonja.campaign.entity.Campaign;
-import com.fonja.campaign.entity.CampaignCategory;
+import com.fonja.campaign.entity.Category;
 import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
@@ -685,7 +685,8 @@ class DonationServiceTest {
                         creator,
                         "Title",
                         "Story",
-                        CampaignCategory.MEDICAL,
+                        new Category("medical-health", "Medical & Health", null, 120),
+                        null,
                         BeneficiaryType.SELF,
                         "Nigeria",
                         null,

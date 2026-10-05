@@ -1,7 +1,6 @@
 package com.fonja.campaign.dto;
 
 import com.fonja.campaign.entity.BeneficiaryType;
-import com.fonja.campaign.entity.CampaignCategory;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Pattern;
@@ -19,7 +18,9 @@ import java.time.Instant;
 public record UpdateCampaignRequest(
         @Size(max = 150, message = "title must be at most 150 characters") String title,
         @Size(max = 20000, message = "story must be at most 20000 characters") String story,
-        CampaignCategory category,
+        @Size(max = 60, message = "category must be at most 60 characters") String category,
+        /** Only accepted when the resulting category is "others"; blank clears it. */
+        @Size(max = 60, message = "categoryNote must be at most 60 characters") String categoryNote,
         BeneficiaryType beneficiaryType,
         @Size(max = 100, message = "country must be at most 100 characters") String country,
         @Size(max = 255, message = "location must be at most 255 characters") String location,

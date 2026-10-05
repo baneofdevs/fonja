@@ -1,7 +1,6 @@
 package com.fonja.campaign.dto;
 
 import com.fonja.campaign.entity.BeneficiaryType;
-import com.fonja.campaign.entity.CampaignCategory;
 import com.fonja.campaign.entity.CampaignLifecycleState;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -27,7 +26,10 @@ public class CampaignResponse {
 
     private String story;
 
-    private CampaignCategory category;
+    private CategoryRef category;
+
+    /** The creator's own label when {@code category} is "others"; null otherwise. */
+    private String categoryNote;
 
     private BeneficiaryType beneficiaryType;
 

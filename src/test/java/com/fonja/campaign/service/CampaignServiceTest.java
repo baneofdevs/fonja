@@ -11,9 +11,9 @@ import com.fonja.campaign.dto.CampaignResponse;
 import com.fonja.campaign.dto.UpdateCampaignRequest;
 import com.fonja.campaign.entity.BeneficiaryType;
 import com.fonja.campaign.entity.Campaign;
-import com.fonja.campaign.entity.CampaignCategory;
 import com.fonja.campaign.entity.CampaignImage;
 import com.fonja.campaign.entity.CampaignLifecycleState;
+import com.fonja.campaign.entity.Category;
 import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
 import com.fonja.common.exception.ApiException;
@@ -54,6 +54,7 @@ class CampaignServiceTest {
     @Mock private CampaignImageRepository campaignImageRepository;
     @Mock private VerificationRequestRepository verificationRequestRepository;
     @Mock private UserService userService;
+    @Mock private CategoryService categoryService;
     @Mock private ApplicationEventPublisher events;
 
     private CampaignService campaignService;
@@ -66,6 +67,7 @@ class CampaignServiceTest {
                         campaignImageRepository,
                         verificationRequestRepository,
                         userService,
+                        categoryService,
                         events);
     }
 
@@ -84,7 +86,8 @@ class CampaignServiceTest {
                         creator,
                         "Title",
                         "Story",
-                        CampaignCategory.MEDICAL,
+                        new Category("medical-health", "Medical & Health", null, 120),
+                        null,
                         BeneficiaryType.SELF,
                         "Nigeria",
                         null,
@@ -109,7 +112,7 @@ class CampaignServiceTest {
 
     private UpdateCampaignRequest update(String title, BigDecimal goalAmount, String currency) {
         return new UpdateCampaignRequest(
-                title, null, null, null, null, null, goalAmount, currency, null, null, null);
+                title, null, null, null, null, null, null, goalAmount, currency, null, null, null);
     }
 
     // --- Launch gate -----------------------------------------------------------------
@@ -392,5 +395,57 @@ class CampaignServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getResponseCode())
                 .isEqualTo(ResponseCode.CONFLICT);
+    }
+
+    // --- Categories ---------------------------------------------------------------
+
+    private UpdateCampaignRequest recategorize(String category, String note) {
+        return new UpdateCampaignRequest(
+                null, null, category, note, null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void aNoteIsKeptWhenMovingIntoOthers() {
+        Campaign campaign = campaign(creator(true), CampaignLifecycleState.DRAFT);
+        givenCampaign(campaign);
+        givenNoImages();
+        when(categoryService.requireAssignable("others"))
+                .thenReturn(new Category("others", "Others", null, 9999));
+
+        campaignService.updateCampaign(
+                CREATOR_ID, CAMPAIGN_ID, recategorize("others", "  Pet rescue "));
+
+        assertThat(campaign.getCategory().getSlug()).isEqualTo("others");
+        assertThat(campaign.getCategoryNote()).isEqualTo("Pet rescue");
+    }
+
+    @Test
+    void aNoteIsRefusedOutsideOthers() {
+        Campaign campaign = campaign(creator(true), CampaignLifecycleState.DRAFT);
+        givenCampaign(campaign);
+
+        assertThatThrownBy(
+                        () ->
+                                campaignService.updateCampaign(
+                                        CREATOR_ID, CAMPAIGN_ID, recategorize(null, "Pet rescue")))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getResponseCode())
+                .isEqualTo(ResponseCode.VALIDATION_ERROR);
+    }
+
+    @Test
+    void movingOutOfOthersDropsTheNote() {
+        Campaign campaign = campaign(creator(true), CampaignLifecycleState.DRAFT);
+        campaign.setCategory(new Category("others", "Others", null, 9999));
+        campaign.setCategoryNote("Pet rescue");
+        givenCampaign(campaign);
+        givenNoImages();
+        when(categoryService.requireAssignable("education"))
+                .thenReturn(new Category("education", "Education", null, 10));
+
+        campaignService.updateCampaign(CREATOR_ID, CAMPAIGN_ID, recategorize("education", null));
+
+        assertThat(campaign.getCategory().getSlug()).isEqualTo("education");
+        assertThat(campaign.getCategoryNote()).isNull();
     }
 }

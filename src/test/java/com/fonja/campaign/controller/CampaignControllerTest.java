@@ -15,9 +15,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fonja.campaign.dto.CampaignResponse;
+import com.fonja.campaign.dto.CategoryRef;
 import com.fonja.campaign.dto.CreateCampaignRequest;
 import com.fonja.campaign.entity.BeneficiaryType;
-import com.fonja.campaign.entity.CampaignCategory;
 import com.fonja.campaign.entity.CampaignLifecycleState;
 import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.config.SecurityConfig;
@@ -82,7 +82,7 @@ class CampaignControllerTest {
                 .creatorId(USER_ID)
                 .title("Help me pay for surgery")
                 .story("Long story")
-                .category(CampaignCategory.MEDICAL)
+                .category(new CategoryRef("medical-health", "Medical & Health"))
                 .beneficiaryType(BeneficiaryType.SELF)
                 .country("Nigeria")
                 .goalAmount(BigDecimal.valueOf(500000))
@@ -98,7 +98,8 @@ class CampaignControllerTest {
         return new CreateCampaignRequest(
                 "Help me pay for surgery",
                 "Long story",
-                CampaignCategory.MEDICAL,
+                "medical-health",
+                null,
                 BeneficiaryType.SELF,
                 "Nigeria",
                 null,
@@ -128,7 +129,7 @@ class CampaignControllerTest {
     void createWithMissingRequiredFieldsFailsValidation() throws Exception {
         CreateCampaignRequest invalid =
                 new CreateCampaignRequest(
-                        "", null, null, null, "", null, null, null, false, null, null);
+                        "", null, null, null, null, "", null, null, null, false, null, null);
 
         mockMvc.perform(
                         post("/api/v1/campaigns")

@@ -79,9 +79,12 @@ public class SecurityConfig {
                                         // someone forgot to come back here.
                                         .requestMatchers("/api/v1/*/admin/**")
                                         .hasRole("ADMIN")
-                                        // Campaign images: served to visitors without a token.
+                                        // Reads a visitor makes without a token: campaign images
+                                        // and the category list.
                                         .requestMatchers(
-                                                HttpMethod.GET, "/api/v1/media/{mediaId:\\d+}")
+                                                HttpMethod.GET,
+                                                "/api/v1/media/{mediaId:\\d+}",
+                                                "/api/v1/categories")
                                         .permitAll()
                                         .anyRequest()
                                         .authenticated())
