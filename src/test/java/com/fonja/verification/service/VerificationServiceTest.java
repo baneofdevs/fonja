@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
+import com.fonja.notification.event.NotificationEvent;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -27,8 +28,10 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,6 +53,7 @@ class VerificationServiceTest {
     @Mock private VerificationDocumentRepository documentRepository;
     @Mock private StorageService storageService;
     @Mock private UserService userService;
+    @Mock private ApplicationEventPublisher events;
 
     private VerificationService verificationService;
 
@@ -57,7 +61,7 @@ class VerificationServiceTest {
     void setUp() {
         verificationService =
                 new VerificationService(
-                        requestRepository, documentRepository, storageService, userService);
+                        requestRepository, documentRepository, storageService, userService, events);
     }
 
     private User user(Long id, boolean verified) {
@@ -263,6 +267,39 @@ class VerificationServiceTest {
 
         assertThat(request.getStatus()).isEqualTo(VerificationStatus.APPROVED);
         verify(userService).markVerified(USER_ID);
+    }
+
+    @Test
+    void approvalEmailsTheApplicant() {
+        VerificationRequest request = pendingRequest();
+        givenRequest(request);
+        when(userService.requireById(ADMIN_ID)).thenReturn(user(ADMIN_ID, false));
+
+        verificationService.approve(ADMIN_ID, REQUEST_ID);
+
+        NotificationEvent.VerificationReviewed event = capturePublished();
+        assertThat(event.approved()).isTrue();
+        assertThat(event.recipient().userId()).isEqualTo(USER_ID);
+        assertThat(event.recipient().email()).isEqualTo("a@b.com");
+    }
+
+    @Test
+    void rejectionEmailsTheApplicantWithTheReason() {
+        VerificationRequest request = pendingRequest();
+        givenRequest(request);
+        when(userService.requireById(ADMIN_ID)).thenReturn(user(ADMIN_ID, false));
+
+        verificationService.reject(ADMIN_ID, REQUEST_ID, "Blurry photo");
+
+        NotificationEvent.VerificationReviewed event = capturePublished();
+        assertThat(event.approved()).isFalse();
+        assertThat(event.reason()).isEqualTo("Blurry photo");
+    }
+
+    private NotificationEvent.VerificationReviewed capturePublished() {
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(captor.capture());
+        return (NotificationEvent.VerificationReviewed) captor.getValue();
     }
 
     @Test

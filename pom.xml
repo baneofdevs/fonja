@@ -81,6 +81,19 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Email notifications over SMTP (Gmail at launch) — see notification/config -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- Branded HTML email layout. The bare engine, not the starter: nothing here renders web
+             views, and the starter would register a view resolver for a REST-only app. -->
+        <dependency>
+            <groupId>org.thymeleaf</groupId>
+            <artifactId>thymeleaf</artifactId>
+        </dependency>
+
         <!-- Boilerplate reduction — optional, drop if the team doesn't use it -->
         <dependency>
             <groupId>org.projectlombok</groupId>

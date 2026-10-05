@@ -23,24 +23,14 @@ public record BankAccountResponse(
         boolean verified,
         Instant verifiedAt) {
 
-    private static final int VISIBLE_DIGITS = 4;
-
     public static BankAccountResponse from(BankAccount account) {
         return new BankAccountResponse(
                 account.getId(),
                 account.getAccountName(),
-                mask(account.getAccountNumber()),
+                account.maskedAccountNumber(),
                 account.getBankCode(),
                 account.getBankName(),
                 account.isVerified(),
                 account.getVerifiedAt());
-    }
-
-    private static String mask(String accountNumber) {
-        if (accountNumber == null || accountNumber.length() <= VISIBLE_DIGITS) {
-            return accountNumber;
-        }
-        int hidden = accountNumber.length() - VISIBLE_DIGITS;
-        return "*".repeat(hidden) + accountNumber.substring(hidden);
     }
 }

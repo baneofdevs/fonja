@@ -10,10 +10,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -70,6 +73,10 @@ public class SecurityConfig {
                                         // hourly for 72 hours until it gets a 2xx. See spec §5.
                                         .requestMatchers("/api/v1/donations/webhook/**")
                                         .permitAll()
+                                        // Sign-up, login, code and password-reset routes: each is
+                                        // how a caller without a token gets one.
+                                        .requestMatchers("/api/v1/auth/**")
+                                        .permitAll()
                                         // One pattern rather than a rule per module: a new module's
                                         // admin endpoints are protected the moment they are
                                         // written,
@@ -78,6 +85,21 @@ public class SecurityConfig {
                                         // someone forgot to come back here.
                                         .requestMatchers("/api/v1/*/admin/**")
                                         .hasRole("ADMIN")
+                                        // The public feed and a campaign's page: the two reads a
+                                        // visitor needs before deciding to sign up. Only these two
+                                        // GETs — the numeric constraint on the id keeps /me and any
+                                        // future /something route authenticated — and a bearer
+                                        // token sent anyway is still decoded, so the same route
+                                        // can show a creator their own draft.
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/api/v1/campaigns",
+                                                "/api/v1/campaigns/{campaignId:\\d+}",
+                                                "/api/v1/campaigns/{campaignId:\\d+}/donations",
+                                                "/api/v1/campaigns/{campaignId:\\d+}/comments",
+                                                "/api/v1/media/{mediaId:\\d+}",
+                                                "/api/v1/categories")
+                                        .permitAll()
                                         .anyRequest()
                                         .authenticated())
                 .oauth2ResourceServer(
@@ -121,6 +143,15 @@ public class SecurityConfig {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
         return converter;
+    }
+
+    /**
+     * BCrypt at the default strength (10): about 100 ms a hash, slow enough to make a stolen table
+     * expensive to crack and fast enough that login does not drag.
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean

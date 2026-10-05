@@ -5,6 +5,9 @@ import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.exception.ApiException;
 import com.fonja.donation.dto.CyberPayCheckout;
 import com.fonja.donation.dto.CyberPayTransaction;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.dto.DonationSummaryResponse;
+import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
 import com.fonja.donation.entity.Donation;
@@ -12,13 +15,21 @@ import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.Recipient;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,6 +59,7 @@ public class DonationService {
     private final CyberPayClient cyberPayClient;
     private final LedgerService ledgerService;
     private final TransactionTemplate transactionTemplate;
+    private final ApplicationEventPublisher events;
 
     public DonationService(
             DonationRepository donationRepository,
@@ -55,13 +67,15 @@ public class DonationService {
             UserService userService,
             CyberPayClient cyberPayClient,
             LedgerService ledgerService,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            ApplicationEventPublisher events) {
         this.donationRepository = donationRepository;
         this.campaignService = campaignService;
         this.userService = userService;
         this.cyberPayClient = cyberPayClient;
         this.ledgerService = ledgerService;
         this.transactionTemplate = transactionTemplate;
+        this.events = events;
     }
 
     /**
@@ -203,6 +217,104 @@ public class DonationService {
         }
     }
 
+    // --- Reads ------------------------------------------------------------------------
+
+    /** Everything this user has given, any status, newest first. */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> myDonations(Long donorId, Pageable pageable) {
+        return donationRepository
+                .findByDonorIdOrderByCreatedAtDesc(donorId, pageable)
+                .map(DonationResponse::forDonor);
+    }
+
+    /** Settled donations to every campaign this user created, newest first. */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> receivedDonations(Long creatorId, Pageable pageable) {
+        return donationRepository
+                .findByCampaignCreatorIdAndStatusOrderByCreatedAtDesc(
+                        creatorId, DonationStatus.SUCCESS, pageable)
+                .map(DonationResponse::withDonor);
+    }
+
+    /**
+     * A campaign's supporters, for its public page. Gated on the campaign's own visibility so a
+     * draft's donor list is exactly as hidden as the draft.
+     */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> campaignDonations(
+            Long viewerId, Long campaignId, Pageable pageable) {
+        campaignService.requireVisibleCampaign(viewerId, campaignId);
+        return donationRepository
+                .findByCampaignIdAndStatusOrderByCreatedAtDesc(
+                        campaignId, DonationStatus.SUCCESS, pageable)
+                .map(DonationResponse::withDonor);
+    }
+
+    /**
+     * Which of {@code userIds} have given to the campaign, for the "Donated" badge on comments.
+     * Settled donations only — a pending checkout is not yet a gift.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> donorsAmong(Long campaignId, Collection<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(
+                donationRepository.findDonorIdsAmong(campaignId, userIds, DonationStatus.SUCCESS));
+    }
+
+    @Transactional(readOnly = true)
+    public DonationSummaryResponse summary(Long userId) {
+        DonationTotals given = donationRepository.totalsGivenBy(userId, DonationStatus.SUCCESS);
+        DonationTotals received =
+                donationRepository.totalsReceivedBy(userId, DonationStatus.SUCCESS);
+        long donors = donationRepository.countDistinctDonorsFor(userId, DonationStatus.SUCCESS);
+        return new DonationSummaryResponse(
+                given.amount(), given.count(), received.amount(), received.count(), donors);
+    }
+
+    /** One of the donor's own donations. Someone else's reads as not found. */
+    @Transactional(readOnly = true)
+    public DonationResponse getForDonor(Long donorId, Long donationId) {
+        return DonationResponse.forDonor(requireOwned(donorId, donationId));
+    }
+
+    /**
+     * The donor is back from checkout and wants to know if it worked. If the webhook has already
+     * landed this is just a read; if not, ask CyberPay now rather than making them wait for the
+     * hourly sweep. Either way the answer is whatever the donation's status is afterwards — a
+     * gateway that is unreachable leaves it PENDING, and the page says so.
+     */
+    @Transactional
+    public DonationResponse confirm(Long donorId, Long donationId) {
+        Donation donation = requireOwned(donorId, donationId);
+        if (donation.getStatus() == DonationStatus.PENDING) {
+            try {
+                reconcilePending(donationId);
+            } catch (ApiException e) {
+                log.info(
+                        "Donation id={} could not be confirmed on return: {}",
+                        donationId,
+                        e.getMessage());
+            }
+        }
+        return DonationResponse.forDonor(donationRepository.findById(donationId).orElseThrow());
+    }
+
+    private Donation requireOwned(Long donorId, Long donationId) {
+        Donation donation =
+                donationRepository
+                        .findById(donationId)
+                        .orElseThrow(
+                                () ->
+                                        ApiException.notFound(
+                                                "Donation " + donationId + " not found"));
+        if (!donation.getDonor().getId().equals(donorId)) {
+            throw ApiException.notFound("Donation " + donationId + " not found");
+        }
+        return donation;
+    }
+
     /**
      * Re-queries one donation that has been PENDING too long, and settles it if CyberPay has since
      * decided. The safety net under the webhook: a notification lost to a restart, an expired
@@ -318,6 +430,11 @@ public class DonationService {
                 donation.getId(),
                 donation.getAmount(),
                 channel);
+
+        // Only on the transition, never on the duplicate-delivery path above: a webhook that is
+        // redelivered hourly for 72 hours must not mean 72 receipts.
+        notifySettled(donation);
+        campaignService.completeIfGoalReached(donation.getCampaign().getId());
         return SettlementOutcome.SETTLED;
     }
 
@@ -386,6 +503,27 @@ public class DonationService {
     }
 
     /** compareTo, not equals: {@code 500.00} and {@code 500.0} are the same amount of money. */
+    // Two emails per settlement: the donor's receipt and the creator's heads-up. Both are read off
+    // the entity graph here, inside the transaction, because the listener runs outside it.
+    private void notifySettled(Donation donation) {
+        Campaign campaign = donation.getCampaign();
+        events.publishEvent(
+                new NotificationEvent.DonationReceipt(
+                        Recipient.of(donation.getDonor()),
+                        campaign.getId(),
+                        campaign.getTitle(),
+                        donation.getAmount(),
+                        donation.getCurrency()));
+        events.publishEvent(
+                new NotificationEvent.DonationReceived(
+                        Recipient.of(campaign.getCreator()),
+                        campaign.getId(),
+                        campaign.getTitle(),
+                        donation.getDonor().getFullName(),
+                        donation.getAmount(),
+                        donation.getCurrency()));
+    }
+
     private static boolean amountsAgree(BigDecimal reported, BigDecimal expected) {
         return reported != null && reported.compareTo(expected) == 0;
     }

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!--
+  The one layout every Fonja email renders through. EmailComposer fills it from a structured
+  message (heading, paragraphs, optional code, detail rows, button), so copy lives in Java next to
+  the facts it states and this file only owns the look.
+
+  Email-client rules this follows on purpose: tables for layout, inline styles only (Gmail strips
+  <style> in some views), no web fonts that matter (Manrope falls back to system sans), no SVG,
+  and the button is a padded link rather than an image so it survives images being blocked.
+  Colours are the fonja-web tokens: amber-500 #d77115, cream-50 #faf8f4, ink-900 #2f1408,
+  ink-500 #616568, line #e9e0d5.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title th:text="${subject}">Fonja</title>
+</head>
+<body style="margin:0;padding:0;background-color:#faf8f4;-webkit-text-size-adjust:100%;">
+  <!-- Preheader: the grey line inbox lists show after the subject. Hidden in the body. -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#faf8f4;"
+       th:text="${preheader}">Preheader</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#faf8f4;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;">
+
+          <!-- Wordmark -->
+          <tr>
+            <td style="padding:0 8px 24px 8px;">
+              <a th:if="${appBaseUrl}" th:href="${appBaseUrl}" href="#" style="text-decoration:none;">
+                <img th:src="${appBaseUrl + '/logo.png'}" src="" alt="Fonja" height="32"
+                     style="display:block;height:32px;width:auto;border:0;outline:none;color:#d77115;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;">
+              </a>
+              <span th:unless="${appBaseUrl}"
+                    style="color:#d77115;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.5px;">fonja</span>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#ffffff;border:1px solid #e9e0d5;border-radius:16px;padding:40px 36px;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#2f1408;">
+
+              <h1 style="margin:0 0 24px 0;font-size:24px;line-height:32px;font-weight:800;color:#2f1408;letter-spacing:-0.3px;"
+                  th:text="${heading}">Heading</h1>
+
+              <p style="margin:0 0 16px 0;font-size:16px;line-height:24px;color:#2f1408;"
+                 th:text="${greeting}">Hi Ada,</p>
+
+              <p th:each="paragraph : ${paragraphs}"
+                 style="margin:0 0 16px 0;font-size:16px;line-height:24px;color:#2f1408;"
+                 th:text="${paragraph}">Paragraph</p>
+
+              <!-- One-time code: big, spaced, easy to read off a phone -->
+              <table th:if="${code}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin:8px 0 24px 0;">
+                <tr>
+                  <td align="center"
+                      style="background-color:#f9eee3;border-radius:12px;padding:20px 12px;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:32px;line-height:40px;font-weight:700;letter-spacing:10px;color:#2f1408;"
+                      th:text="${code}">123456</td>
+                </tr>
+              </table>
+
+              <!-- Key facts: amount, reference, reason… -->
+              <table th:if="${!details.isEmpty()}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin:8px 0 24px 0;border:1px solid #e9e0d5;border-radius:12px;">
+                <tr th:each="row, it : ${details}">
+                  <td th:style="${it.last} ? 'padding:12px 16px;font-size:14px;line-height:20px;color:#616568;' : 'padding:12px 16px;font-size:14px;line-height:20px;color:#616568;border-bottom:1px solid #e9e0d5;'"
+                      th:text="${row.label}">Label</td>
+                  <td align="right"
+                      th:style="${it.last} ? 'padding:12px 16px;font-size:14px;line-height:20px;color:#2f1408;font-weight:700;' : 'padding:12px 16px;font-size:14px;line-height:20px;color:#2f1408;font-weight:700;border-bottom:1px solid #e9e0d5;'"
+                      th:text="${row.value}">Value</td>
+                </tr>
+              </table>
+
+              <!-- Call to action -->
+              <table th:if="${cta}" role="presentation" cellpadding="0" cellspacing="0" border="0"
+                     style="margin:8px 0 24px 0;">
+                <tr>
+                  <td style="background-color:#d77115;border-radius:12px;">
+                    <a th:href="${cta.url}" href="#" th:text="${cta.label}"
+                       style="display:inline-block;padding:14px 28px;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px;line-height:20px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;">Button</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p th:each="note : ${footnotes}"
+                 style="margin:0 0 12px 0;font-size:14px;line-height:20px;color:#616568;"
+                 th:text="${note}">Footnote</p>
+
+              <p th:if="${cta}" style="margin:16px 0 0 0;font-size:12px;line-height:18px;color:#889498;word-break:break-all;">
+                Button not working? Paste this link into your browser:<br>
+                <a th:href="${cta.url}" href="#" th:text="${cta.url}" style="color:#d77115;">https://fonja.ng</a>
+              </p>
+
+              <p style="margin:24px 0 0 0;font-size:16px;line-height:24px;color:#2f1408;">
+                — The Fonja team
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center"
+                style="padding:24px 8px 0 8px;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#889498;">
+              Fonja — connecting people, causes, and communities to make meaningful change possible.<br>
+              <span th:text="${'© ' + year + ' Fonja Ltd.'}">© 2026 Fonja Ltd.</span>
+              <span th:if="${appBaseUrl}"> ·
+                <a th:href="${appBaseUrl + '/dashboard/settings'}" href="#" style="color:#889498;">Account settings</a>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

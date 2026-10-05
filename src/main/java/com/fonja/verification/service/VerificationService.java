@@ -1,6 +1,8 @@
 package com.fonja.verification.service;
 
 import com.fonja.common.exception.ApiException;
+import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.Recipient;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import com.fonja.verification.dto.SubmitVerificationRequest;
@@ -14,6 +16,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -34,16 +37,19 @@ public class VerificationService {
     private final VerificationDocumentRepository documentRepository;
     private final StorageService storageService;
     private final UserService userService;
+    private final ApplicationEventPublisher events;
 
     public VerificationService(
             VerificationRequestRepository requestRepository,
             VerificationDocumentRepository documentRepository,
             StorageService storageService,
-            UserService userService) {
+            UserService userService,
+            ApplicationEventPublisher events) {
         this.requestRepository = requestRepository;
         this.documentRepository = documentRepository;
         this.storageService = storageService;
         this.userService = userService;
+        this.events = events;
     }
 
     @Transactional
@@ -179,6 +185,9 @@ public class VerificationService {
 
         transition(() -> request.approve(admin));
         userService.markVerified(request.getUser().getId());
+        events.publishEvent(
+                new NotificationEvent.VerificationReviewed(
+                        Recipient.of(request.getUser()), true, null));
 
         log.info("Verification request id={} approved by admin id={}", requestId, adminUserId);
         return toResponse(request);
@@ -190,6 +199,9 @@ public class VerificationService {
         User admin = userService.requireById(adminUserId);
 
         transition(() -> request.reject(admin, reason));
+        events.publishEvent(
+                new NotificationEvent.VerificationReviewed(
+                        Recipient.of(request.getUser()), false, reason));
 
         log.info("Verification request id={} rejected by admin id={}", requestId, adminUserId);
         return toResponse(request);

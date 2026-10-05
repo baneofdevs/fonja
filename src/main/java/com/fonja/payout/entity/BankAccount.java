@@ -20,6 +20,8 @@ import lombok.Getter;
 @Getter
 public class BankAccount {
 
+    private static final int MASK_VISIBLE_DIGITS = 4;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -79,6 +81,19 @@ public class BankAccount {
     public void markVerified(String confirmedAccountName) {
         this.accountName = confirmedAccountName;
         this.verifiedAt = Instant.now();
+    }
+
+    /**
+     * The account number with all but the last four digits hidden — what goes on a response or in
+     * an email. The creator already knows their own number; nobody reading over their shoulder
+     * needs to.
+     */
+    public String maskedAccountNumber() {
+        if (accountNumber == null || accountNumber.length() <= MASK_VISIBLE_DIGITS) {
+            return accountNumber;
+        }
+        int hidden = accountNumber.length() - MASK_VISIBLE_DIGITS;
+        return "*".repeat(hidden) + accountNumber.substring(hidden);
     }
 
     public boolean isVerified() {

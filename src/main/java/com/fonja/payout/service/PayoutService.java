@@ -2,6 +2,8 @@ package com.fonja.payout.service;
 
 import com.fonja.common.exception.ApiException;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.Recipient;
 import com.fonja.payout.config.PayoutConfig;
 import com.fonja.payout.dto.BankAccountResponse;
 import com.fonja.payout.dto.LinkBankAccountRequest;
@@ -26,6 +28,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -52,6 +55,9 @@ public class PayoutService {
 
     private static final Logger log = LoggerFactory.getLogger(PayoutService.class);
 
+    /** Payouts land in Nigerian bank accounts, and the ledger is single-currency; so are these. */
+    private static final String PAYOUT_CURRENCY = "NGN";
+
     /** As on a donation: 64 bits of randomness, unguessable and short enough for any gateway. */
     private static final int REFERENCE_RANDOM_BYTES = 8;
 
@@ -68,6 +74,7 @@ public class PayoutService {
     private final PayoutGateway payoutGateway;
     private final PayoutConfig config;
     private final TransactionTemplate transactionTemplate;
+    private final ApplicationEventPublisher events;
 
     public PayoutService(
             PayoutRequestRepository payoutRequestRepository,
@@ -76,7 +83,8 @@ public class PayoutService {
             UserService userService,
             PayoutGateway payoutGateway,
             PayoutConfig config,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            ApplicationEventPublisher events) {
         this.payoutRequestRepository = payoutRequestRepository;
         this.bankAccountRepository = bankAccountRepository;
         this.ledgerService = ledgerService;
@@ -84,6 +92,7 @@ public class PayoutService {
         this.payoutGateway = payoutGateway;
         this.config = config;
         this.transactionTemplate = transactionTemplate;
+        this.events = events;
     }
 
     // --- Bank account ---------------------------------------------------------------
@@ -200,6 +209,15 @@ public class PayoutService {
                                 newMerchantReference()));
 
         ledgerService.recordWithdrawal(payout);
+        events.publishEvent(
+                new NotificationEvent.WithdrawalRequested(
+                        Recipient.of(creator),
+                        payout.getId(),
+                        payout.getAmount(),
+                        payout.getFee(),
+                        PAYOUT_CURRENCY,
+                        account.getBankName(),
+                        account.maskedAccountNumber()));
 
         log.info(
                 "Payout id={} requested by creator id={} for {} (merchantRef={})",
@@ -287,6 +305,7 @@ public class PayoutService {
             throw ApiException.conflict("Payout " + payoutId + " is already " + payout.getStatus());
         }
         payout.markPaid();
+        events.publishEvent(settled(payout, true, null));
         log.info(
                 "Payout id={} marked PAID for creator id={}",
                 payoutId,
@@ -326,12 +345,30 @@ public class PayoutService {
     private void fail(PayoutRequest payout, String reason) {
         payout.markFailed(reason);
         ledgerService.reverseWithdrawal(payout);
+        events.publishEvent(settled(payout, false, reason));
         log.warn(
                 "Payout id={} FAILED and {} returned to creator id={}: {}",
                 payout.getId(),
                 payout.getTotalReserved(),
                 payout.getCreator().getId(),
                 reason);
+    }
+
+    // The bank account can be null if it was deleted out from under an open payout; the email
+    // then says "your bank account" rather than naming one.
+    private static NotificationEvent.WithdrawalSettled settled(
+            PayoutRequest payout, boolean paid, String failureReason) {
+        BankAccount account = payout.getBankAccount();
+        return new NotificationEvent.WithdrawalSettled(
+                Recipient.of(payout.getCreator()),
+                payout.getId(),
+                payout.getAmount(),
+                payout.getFee(),
+                PAYOUT_CURRENCY,
+                account == null ? null : account.getBankName(),
+                account == null ? null : account.maskedAccountNumber(),
+                paid,
+                failureReason);
     }
 
     private PayoutInstruction instructionFor(PayoutRequest payout) {

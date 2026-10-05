@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.fonja.campaign.entity.BeneficiaryType;
 import com.fonja.campaign.entity.Campaign;
-import com.fonja.campaign.entity.CampaignCategory;
+import com.fonja.campaign.entity.Category;
 import com.fonja.donation.entity.Donation;
 import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.repository.DonationRepository;
@@ -136,7 +136,8 @@ class PendingDonationSweepJobTest {
                         creator,
                         "Title",
                         "Story",
-                        CampaignCategory.MEDICAL,
+                        new Category("medical-health", "Medical & Health", null, 120),
+                        null,
                         BeneficiaryType.SELF,
                         "Nigeria",
                         null,

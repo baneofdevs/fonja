@@ -1,0 +1,2991 @@
+{
+ "info": {
+  "_postman_id": "a2b500fa-d3b7-4406-b330-b0744e0e923d",
+  "name": "Fonja API",
+  "description": "Ordered QA run for the Fonja backend. Run folders top to bottom — each captures ids into the environment for the next. Import fonja.postman_environment.json alongside and set baseUrl, token, adminToken, integrationKey.",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "auth": {
+  "type": "bearer",
+  "bearer": [
+   {
+    "key": "token",
+    "value": "{{token}}",
+    "type": "string"
+   }
+  ]
+ },
+ "event": [
+  {
+   "listen": "test",
+   "script": {
+    "type": "text/javascript",
+    "exec": [
+     "if (!pm.variables.get(\"expectError\")) {",
+     "  pm.test(\"envelope 00\", () => {",
+     "    pm.response.to.have.status(200);",
+     "    pm.expect(pm.response.json().responseCode).to.eql(\"00\");",
+     "  });",
+     "}",
+     "pm.variables.unset(\"expectError\");"
+    ]
+   }
+  }
+ ],
+ "variable": [
+  {
+   "key": "baseUrl",
+   "value": "http://localhost:8080"
+  }
+ ],
+ "item": [
+  {
+   "name": "1 · Health & sign-in",
+   "description": "Get a JWT by opening {{baseUrl}}/oauth2/authorization/google in a browser and copying responseData.accessToken into the `token` environment variable. There is no password login.",
+   "item": [
+    {
+     "name": "Health",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/actuator/health",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "actuator",
+        "health"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"UP\", () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql(\"UP\"); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Me without token → 401",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/users/me",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "users",
+        "me"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"anonymous is rejected\", () => pm.response.to.have.status(401));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "2 · Profile",
+   "description": "",
+   "item": [
+    {
+     "name": "Me",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/users/me",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "users",
+        "me"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const u = pm.response.json().responseData;",
+         "pm.environment.set(\"userId\", u.id);",
+         "pm.test(\"has DONOR role\", () => pm.expect(u.roles).to.include(\"DONOR\"));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "3 · Campaign draft",
+   "description": "Run before submitting verification so 'Launch (unverified)' shows the 06 gate.",
+   "item": [
+    {
+     "name": "Create campaign",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"title\": \"Dialysis fund for Mama Ngozi\",\n  \"story\": \"Three sessions a week at LUTH for six months. Every naira goes to the hospital directly.\",\n  \"category\": \"MEDICAL\",\n  \"beneficiaryType\": \"SOMEONE_ELSE\",\n  \"country\": \"Nigeria\",\n  \"location\": \"Lagos\",\n  \"goalAmount\": 1500000.0,\n  \"currency\": \"NGN\",\n  \"autoAdjustGoal\": false,\n  \"coverMediaPath\": \"uploads/covers/ngozi.jpg\",\n  \"deadline\": \"2026-12-31T23:59:59Z\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const c = pm.response.json().responseData;",
+         "pm.test(\"starts as DRAFT\", () => pm.expect(c.lifecycleState).to.eql(\"DRAFT\"));",
+         "pm.environment.set(\"campaignId\", c.id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Create campaign — bad currency → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"title\": \"Dialysis fund for Mama Ngozi\",\n  \"story\": \"Three sessions a week at LUTH for six months. Every naira goes to the hospital directly.\",\n  \"category\": \"MEDICAL\",\n  \"beneficiaryType\": \"SOMEONE_ELSE\",\n  \"country\": \"Nigeria\",\n  \"location\": \"Lagos\",\n  \"goalAmount\": 1500000.0,\n  \"currency\": \"naira\",\n  \"autoAdjustGoal\": false,\n  \"coverMediaPath\": \"uploads/covers/ngozi.jpg\",\n  \"deadline\": \"2026-12-31T23:59:59Z\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"validation error\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Create campaign — goal 0 → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"title\": \"Dialysis fund for Mama Ngozi\",\n  \"story\": \"Three sessions a week at LUTH for six months. Every naira goes to the hospital directly.\",\n  \"category\": \"MEDICAL\",\n  \"beneficiaryType\": \"SOMEONE_ELSE\",\n  \"country\": \"Nigeria\",\n  \"location\": \"Lagos\",\n  \"goalAmount\": 0,\n  \"currency\": \"NGN\",\n  \"autoAdjustGoal\": false,\n  \"coverMediaPath\": \"uploads/covers/ngozi.jpg\",\n  \"deadline\": \"2026-12-31T23:59:59Z\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"validation error\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "My campaigns",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/me?page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "me"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"contains my campaign\", () => pm.expect(pm.response.json().responseData.content.map(c => c.id)).to.include(Number(pm.environment.get(\"campaignId\"))));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get campaign",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Get campaign — unknown id → 404",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/999999",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "999999"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"not found\", () => {",
+         "  pm.response.to.have.status(404);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"02\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Update campaign (partial)",
+     "request": {
+      "method": "PATCH",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"title\": \"Dialysis fund for Mama Ngozi \\u2014 6 months\",\n  \"goalAmount\": 1800000.0\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"title updated\", () => pm.expect(pm.response.json().responseData.title).to.include(\"6 months\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Add image",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/images",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "images"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"filePath\": \"uploads/campaigns/ngozi-ward.jpg\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const imgs = pm.response.json().responseData.images;",
+         "pm.environment.set(\"imageId\", imgs[imgs.length - 1].id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Remove image",
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/images/{{imageId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "images",
+        "{{imageId}}"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"images empty\", () => pm.expect(pm.response.json().responseData.images).to.be.empty);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Remove image again → 404",
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/images/{{imageId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "images",
+        "{{imageId}}"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"already removed\", () => {",
+         "  pm.response.to.have.status(404);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"02\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Add image (back)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/images",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "images"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"filePath\": \"uploads/campaigns/ngozi-ward.jpg\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Launch (unverified) → 403/06",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/launch",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "launch"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"launch gated on verification\", () => {",
+         "  pm.response.to.have.status(403);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"06\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "4 · Verification",
+   "description": "",
+   "item": [
+    {
+     "name": "Submit verification",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"type\": \"INDIVIDUAL\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const v = pm.response.json().responseData;",
+         "pm.test(\"PENDING\", () => pm.expect(v.status).to.eql(\"PENDING\"));",
+         "pm.environment.set(\"verificationId\", v.id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit — BUSINESS without reg number → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"type\": \"BUSINESS\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"registrationNumber required\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit again while pending → 409",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"type\": \"INDIVIDUAL\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"duplicate pending\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload document",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/{{verificationId}}/documents?docType=GOVERNMENT_ID",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "{{verificationId}}",
+        "documents"
+       ],
+       "query": [
+        {
+         "key": "docType",
+         "value": "GOVERNMENT_ID"
+        }
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": "",
+         "description": "Pick any JPG/PNG/PDF under 10MB"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const docs = pm.response.json().responseData.documents;",
+         "pm.environment.set(\"documentId\", docs[docs.length - 1].id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "My latest verification",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/me",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "me"
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Launch (verification in flight)",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/launch",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "launch"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"PENDING_REVIEW\", () => pm.expect(pm.response.json().responseData.lifecycleState).to.eql(\"PENDING_REVIEW\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Launch again → 409",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/launch",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}",
+        "launch"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"illegal transition\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "5 · Admin bootstrap",
+   "description": "No API grants ADMIN. Run:  INSERT INTO user_roles (user_id, role) VALUES ({{userId}}, 'ADMIN');  then sign in again and put the new accessToken in `adminToken`.",
+   "item": [
+    {
+     "name": "Review queue as creator → 403",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/admin/review-queue",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "admin",
+        "review-queue"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"admin route gated\", () => {",
+         "  pm.response.to.have.status(403);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"04\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "6 · Admin review",
+   "description": "All requests use {{adminToken}}.",
+   "item": [
+    {
+     "name": "Verification queue (PENDING)",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/requests?status=PENDING&page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "requests"
+       ],
+       "query": [
+        {
+         "key": "status",
+         "value": "PENDING"
+        },
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Get verification request",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/requests/{{verificationId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "requests",
+        "{{verificationId}}"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Download document",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/documents/{{documentId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "documents",
+        "{{documentId}}"
+       ]
+      },
+      "description": "Use Send and Download. Not wrapped in the JSON envelope.",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"octet-stream attachment\", () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get(\"Content-Disposition\")).to.include(\"attachment\"); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Reject verification (optional branch)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/requests/{{verificationId}}/reject",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "requests",
+        "{{verificationId}}",
+        "reject"
+       ]
+      },
+      "description": "Skip on the happy path — a rejected request cannot be approved afterwards.",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"reason\": \"ID photo is unreadable\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Approve verification",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/requests/{{verificationId}}/approve",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "requests",
+        "{{verificationId}}",
+        "approve"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"APPROVED\", () => pm.expect(pm.response.json().responseData.status).to.eql(\"APPROVED\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Approve verification again → 409",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/verification/admin/requests/{{verificationId}}/approve",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "verification",
+        "admin",
+        "requests",
+        "{{verificationId}}",
+        "approve"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"already decided\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Me (now verified creator)",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/users/me",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "users",
+        "me"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const u = pm.response.json().responseData;",
+         "pm.test(\"verified\", () => pm.expect(u.verified).to.be.true);",
+         "pm.test(\"CREATOR role\", () => pm.expect(u.roles).to.include(\"CREATOR\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Campaign review queue",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/admin/review-queue?page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "admin",
+        "review-queue"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Reject campaign (optional branch)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/admin/{{campaignId}}/reject",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "admin",
+        "{{campaignId}}",
+        "reject"
+       ]
+      },
+      "description": "Sends the campaign back to DRAFT with rejectionReason. Re-run Launch afterwards.",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"reason\": \"Add a hospital invoice to the story\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Approve campaign",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/admin/{{campaignId}}/approve",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "admin",
+        "{{campaignId}}",
+        "approve"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"ACTIVE\", () => pm.expect(pm.response.json().responseData.lifecycleState).to.eql(\"ACTIVE\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Update goal after DRAFT → 409",
+     "request": {
+      "method": "PATCH",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"goalAmount\": 2000000.0\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"terms locked\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Update story after DRAFT (allowed)",
+     "request": {
+      "method": "PATCH",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"story\": \"Update: first month of sessions covered. Thank you.\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    }
+   ]
+  },
+  {
+   "name": "6b · Public feed (no token)",
+   "description": "Runs after the campaign is approved in 6. Every request here is anonymous on purpose: the feed and a campaign page are the two reads a visitor gets before signing up.",
+   "item": [
+    {
+     "name": "Feed, newest first",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns?sort=NEWEST&page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ],
+       "query": [
+        {
+         "key": "sort",
+         "value": "NEWEST"
+        },
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const d = pm.response.json().responseData;",
+         "pm.test(\"paged shape\", () => { pm.expect(d).to.have.property(\"content\"); pm.expect(d.page).to.include.keys(\"size\",\"number\",\"totalElements\",\"totalPages\"); });",
+         "pm.test(\"contains the approved campaign\", () => pm.expect(d.content.map(c => String(c.id))).to.include(String(pm.variables.get(\"campaignId\"))));",
+         "pm.test(\"only ACTIVE\", () => d.content.forEach(c => pm.expect(c.lifecycleState).to.eql(\"ACTIVE\")));",
+         "pm.test(\"cards carry creatorName and raisedAmount\", () => { const c = d.content[0]; pm.expect(c.creatorName).to.be.a(\"string\"); pm.expect(c).to.have.property(\"raisedAmount\"); pm.expect(c).to.have.property(\"donationCount\"); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Feed, ending soon",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns?sort=ENDING_SOON",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ],
+       "query": [
+        {
+         "key": "sort",
+         "value": "ENDING_SOON"
+        }
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"returns content\", () => pm.expect(pm.response.json().responseData.content).to.be.an(\"array\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Feed, most raised",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns?sort=MOST_RAISED",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ],
+       "query": [
+        {
+         "key": "sort",
+         "value": "MOST_RAISED"
+        }
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const c = pm.response.json().responseData.content;",
+         "pm.test(\"descending by raisedAmount\", () => { for (let i = 1; i < c.length; i++) pm.expect(c[i-1].raisedAmount).to.be.at.least(c[i].raisedAmount); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Feed, filtered by category and search",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns?category=MEDICAL&q=surgery",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ],
+       "query": [
+        {
+         "key": "category",
+         "value": "MEDICAL"
+        },
+        {
+         "key": "q",
+         "value": "surgery"
+        }
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"every card matches the category\", () => pm.response.json().responseData.content.forEach(c => pm.expect(c.category).to.eql(\"MEDICAL\")));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Feed, unknown sort → 400",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns?sort=TRENDING",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns"
+       ],
+       "query": [
+        {
+         "key": "sort",
+         "value": "TRENDING"
+        }
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"400 with the accepted values\", () => { pm.response.to.have.status(400); pm.expect(pm.response.json().responseMessage).to.include(\"NEWEST\"); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Campaign page, anonymous",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const c = pm.response.json().responseData;",
+         "pm.test(\"public read\", () => { pm.expect(String(c.id)).to.eql(String(pm.variables.get(\"campaignId\"))); pm.expect(c.creatorName).to.be.a(\"string\"); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "My campaigns still needs a token → 401",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/me",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "me"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"401\", () => pm.response.to.have.status(401));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "7 · Donation",
+   "description": "Needs CyberPay staging keys in .env; otherwise expect 503 / code 21.",
+   "item": [
+    {
+     "name": "Initiate donation",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"campaignId\": \"{{campaignId}}\",\n  \"amount\": 10000.0\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "// campaignId must be a number in the body, not a string",
+         "pm.request.body.raw = pm.request.body.raw.replace('\"{{campaignId}}\"', pm.environment.get(\"campaignId\"));"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const d = pm.response.json().responseData;",
+         "pm.environment.set(\"donationId\", d.donationId);",
+         "pm.environment.set(\"merchantRef\", d.merchantReference);",
+         "pm.test(\"checkout is on CyberPay\", () => pm.expect(d.checkoutUrl).to.include(\"cyberpay\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Initiate — amount below minimum → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"campaignId\": 1,\n  \"amount\": 50\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"minimum 100\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Initiate — unknown campaign → 404",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"campaignId\": 999999,\n  \"amount\": 1000\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"not found\", () => {",
+         "  pm.response.to.have.status(404);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"02\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "8 · Webhook",
+   "description": "Unauthenticated; signed with HMAC-SHA512(rawBody, integrationKey) in the Cyberpay-Signature header. The pre-request script does the signing.",
+   "item": [
+    {
+     "name": "Webhook — signed",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations/webhook",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations",
+        "webhook"
+       ]
+      },
+      "description": "With a made-up Reference the handler re-queries CyberPay, finds nothing, and still returns 200. Use the real reference from a paid staging checkout to confirm a donation.",
+      "auth": {
+       "type": "noauth"
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"Data\": {\n    \"Reference\": \"CYP-TEST-0001\",\n    \"MerchantRef\": \"{{merchantRef}}\",\n    \"PaymentChannel\": \"Card\",\n    \"Status\": \"Successful\"\n  }\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "// Sign the resolved body exactly as it will be sent (HMAC-SHA512, lower-case hex)",
+         "const body = pm.variables.replaceIn(pm.request.body.raw);",
+         "const key  = pm.environment.get(\"integrationKey\");",
+         "const sig  = CryptoJS.HmacSHA512(body, key).toString(CryptoJS.enc.Hex);",
+         "pm.request.headers.upsert({ key: \"Cyberpay-Signature\", value: sig });",
+         "pm.request.headers.upsert({ key: \"Content-Type\", value: \"application/json\" });"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"accepted\", () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Webhook — no signature → 401",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations/webhook",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations",
+        "webhook"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"Data\": {\n    \"Reference\": \"CYP-TEST-0001\",\n    \"MerchantRef\": \"{{merchantRef}}\",\n    \"PaymentChannel\": \"Card\",\n    \"Status\": \"Successful\"\n  }\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"missing signature\", () => {",
+         "  pm.response.to.have.status(401);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"03\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Webhook — wrong signature → 401",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Cyberpay-Signature",
+        "value": "deadbeef"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations/webhook",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations",
+        "webhook"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"Data\": {\n    \"Reference\": \"CYP-TEST-0001\",\n    \"MerchantRef\": \"{{merchantRef}}\",\n    \"PaymentChannel\": \"Card\",\n    \"Status\": \"Successful\"\n  }\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"invalid signature\", () => {",
+         "  pm.response.to.have.status(401);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"03\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Webhook — signed, no Reference → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/donations/webhook",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "donations",
+        "webhook"
+       ]
+      },
+      "auth": {
+       "type": "noauth"
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"Data\": {\n    \"Status\": \"Successful\"\n  }\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);",
+         "// Sign the resolved body exactly as it will be sent (HMAC-SHA512, lower-case hex)",
+         "const body = pm.variables.replaceIn(pm.request.body.raw);",
+         "const key  = pm.environment.get(\"integrationKey\");",
+         "const sig  = CryptoJS.HmacSHA512(body, key).toString(CryptoJS.enc.Hex);",
+         "pm.request.headers.upsert({ key: \"Cyberpay-Signature\", value: sig });",
+         "pm.request.headers.upsert({ key: \"Content-Type\", value: \"application/json\" });"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"no Data.Reference\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "9 · Earnings",
+   "description": "",
+   "item": [
+    {
+     "name": "My earnings",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/earnings",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "earnings"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const e = pm.response.json().responseData;",
+         "console.log(\"available\", e.available, \"totalEarned\", e.totalEarned);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Platform revenue",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/earnings/admin/platform-revenue",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "earnings",
+        "admin",
+        "platform-revenue"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": []
+    }
+   ]
+  },
+  {
+   "name": "10 · Payout",
+   "description": "Needs a verified creator and a balance. Fee ₦200 comes out of the same balance.",
+   "item": [
+    {
+     "name": "Link bank account",
+     "request": {
+      "method": "PUT",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/bank-account",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "bank-account"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"accountNumber\": \"0123456789\",\n  \"bankCode\": \"058\",\n  \"bankName\": \"GTBank\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Link bank account — bad NUBAN → 400",
+     "request": {
+      "method": "PUT",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/bank-account",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "bank-account"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"accountNumber\": \"12345\",\n  \"bankCode\": \"058\",\n  \"bankName\": \"GTBank\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"NUBAN must be 10 digits\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "My bank account",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/bank-account",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "bank-account"
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Payout quote",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/quote",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "quote"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const q = pm.response.json().responseData;",
+         "pm.test(\"max = available − fee (floored at 0)\", () =>",
+         "  pm.expect(Number(q.maxWithdrawable)).to.eql(Math.max(0, Number(q.available) - Number(q.withdrawalFee))));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Request payout",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"amount\": 5000.0\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const p = pm.response.json().responseData;",
+         "pm.test(\"REQUESTED\", () => pm.expect(p.status).to.eql(\"REQUESTED\"));",
+         "pm.environment.set(\"payoutId\", p.id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Request payout — below minimum → 400",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"amount\": 50\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"minimum 100\", () => {",
+         "  pm.response.to.have.status(400);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"01\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Request payout — over balance → 409",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"amount\": 999999999.0\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"insufficient balance\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "My payouts",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts?page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Open payouts (admin)",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/admin/open?page=0&size=20",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "admin",
+        "open"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "0"
+        },
+        {
+         "key": "size",
+         "value": "20"
+        }
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Mark payout failed (branch A)",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/admin/{{payoutId}}/failed?reason=Account%20name%20mismatch",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "admin",
+        "{{payoutId}}",
+        "failed"
+       ],
+       "query": [
+        {
+         "key": "reason",
+         "value": "Account name mismatch"
+        }
+       ]
+      },
+      "description": "Returns amount + fee to the creator's balance. Request a new payout before running branch B.",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"FAILED\", () => pm.expect(pm.response.json().responseData.status).to.eql(\"FAILED\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Mark payout paid (branch B)",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/admin/{{payoutId}}/paid",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "admin",
+        "{{payoutId}}",
+        "paid"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"PAID\", () => pm.expect(pm.response.json().responseData.status).to.eql(\"PAID\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Mark paid again → 409",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/payouts/admin/{{payoutId}}/paid",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "payouts",
+        "admin",
+        "{{payoutId}}",
+        "paid"
+       ]
+      },
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{adminToken}}",
+         "type": "string"
+        }
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"terminal state\", () => {",
+         "  pm.response.to.have.status(409);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"05\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "11 · Cleanup",
+   "description": "",
+   "item": [
+    {
+     "name": "Delete campaign",
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      },
+      "description": "DRAFT is hard-deleted; anything later is soft-deleted to CANCELLED."
+     },
+     "response": []
+    },
+    {
+     "name": "Delete campaign again → 404",
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "v1",
+        "campaigns",
+        "{{campaignId}}"
+       ]
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.variables.set(\"expectError\", true);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"gone\", () => {",
+         "  pm.response.to.have.status(404);",
+         "  pm.expect(pm.response.json().responseCode).to.eql(\"02\");",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
