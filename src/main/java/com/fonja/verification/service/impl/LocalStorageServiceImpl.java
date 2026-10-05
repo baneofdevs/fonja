@@ -13,15 +13,18 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
  * Local filesystem implementation — foundation-stage only. NOTE: local disk is not durable across
  * container restarts or multiple app instances. Must migrate to object storage before any
- * multi-instance or production deployment (see technical spec, Open Decisions).
+ * multi-instance or production deployment (see technical spec, Open Decisions). The default
+ * backend; {@code fonja.storage.type=r2} switches to {@link R2StorageServiceImpl}.
  */
 @Service
+@ConditionalOnProperty(name = "fonja.storage.type", havingValue = "local", matchIfMissing = true)
 public class LocalStorageServiceImpl implements StorageService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalStorageServiceImpl.class);

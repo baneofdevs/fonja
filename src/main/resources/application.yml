@@ -128,6 +128,17 @@ fonja:
     read-timeout: ${CYBERPAY_PAYOUT_READ_TIMEOUT:30s}
 
   storage:
+    # local: files on this machine's disk (development, Compose).
+    # r2: a private Cloudflare R2 bucket — what any host with an ephemeral disk, like Render's free
+    # tier, needs, or every upload disappears on the next restart.
+    type: ${FONJA_STORAGE_TYPE:local}
+    r2:
+      # From the R2 overview page. The S3 endpoint is derived from it.
+      account-id: ${R2_ACCOUNT_ID:}
+      # An R2 API token scoped to the one bucket, with Object Read & Write.
+      access-key-id: ${R2_ACCESS_KEY_ID:}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+      bucket: ${R2_BUCKET:}
     local:
       # Placeholder implementation. Local disk is not durable across container
       # restarts and is not shared between instances — must move to object storage
