@@ -10,6 +10,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -78,6 +79,10 @@ public class SecurityConfig {
                                         // someone forgot to come back here.
                                         .requestMatchers("/api/v1/*/admin/**")
                                         .hasRole("ADMIN")
+                                        // Campaign images: served to visitors without a token.
+                                        .requestMatchers(
+                                                HttpMethod.GET, "/api/v1/media/{mediaId:\\d+}")
+                                        .permitAll()
                                         .anyRequest()
                                         .authenticated())
                 .oauth2ResourceServer(
