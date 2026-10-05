@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,9 @@ public class R2StorageServiceImpl implements StorageService {
     private final S3Client s3;
     private final String bucket;
 
+    // @Autowired because the class has a second, test-only constructor: with two to choose from,
+    // Spring will not guess, and falls back to looking for a no-argument one.
+    @Autowired
     public R2StorageServiceImpl(
             @Value("${fonja.storage.r2.account-id}") String accountId,
             @Value("${fonja.storage.r2.access-key-id}") String accessKeyId,
