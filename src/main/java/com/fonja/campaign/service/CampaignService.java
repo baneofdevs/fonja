@@ -10,6 +10,8 @@ import com.fonja.campaign.entity.IllegalCampaignStateException;
 import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
 import com.fonja.common.exception.ApiException;
+import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.Recipient;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import com.fonja.verification.entity.VerificationStatus;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -35,16 +38,19 @@ public class CampaignService {
     private final CampaignImageRepository campaignImageRepository;
     private final VerificationRequestRepository verificationRequestRepository;
     private final UserService userService;
+    private final ApplicationEventPublisher events;
 
     public CampaignService(
             CampaignRepository campaignRepository,
             CampaignImageRepository campaignImageRepository,
             VerificationRequestRepository verificationRequestRepository,
-            UserService userService) {
+            UserService userService,
+            ApplicationEventPublisher events) {
         this.campaignRepository = campaignRepository;
         this.campaignImageRepository = campaignImageRepository;
         this.verificationRequestRepository = verificationRequestRepository;
         this.userService = userService;
+        this.events = events;
     }
 
     // Creates a new draft campaign for the given user.
@@ -292,11 +298,14 @@ public class CampaignService {
                         campaignId,
                         adminUserId,
                         blocker);
+                notifyReviewed(campaign, false, blocker);
             } else {
                 transition(campaign::activate);
+                notifyReviewed(campaign, true, null);
             }
         } else {
             transition(() -> campaign.reject(rejectionReason));
+            notifyReviewed(campaign, false, rejectionReason);
         }
 
         log.info(
@@ -326,6 +335,16 @@ public class CampaignService {
 
         transition(campaign::cancel);
         log.info("Campaign id={} soft-deleted (cancelled) by user id={}", campaignId, userId);
+    }
+
+    private void notifyReviewed(Campaign campaign, boolean approved, String reason) {
+        events.publishEvent(
+                new NotificationEvent.CampaignReviewed(
+                        Recipient.of(campaign.getCreator()),
+                        campaign.getId(),
+                        campaign.getTitle(),
+                        approved,
+                        reason));
     }
 
     /** True when the creator has a verification request awaiting an admin decision. */

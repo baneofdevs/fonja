@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -27,6 +28,7 @@ import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -41,6 +43,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -71,6 +74,7 @@ class DonationServiceTest {
     @Mock private UserService userService;
     @Mock private CyberPayClient cyberPayClient;
     @Mock private LedgerService ledgerService;
+    @Mock private ApplicationEventPublisher events;
 
     private DonationService donationService;
 
@@ -83,7 +87,8 @@ class DonationServiceTest {
                         userService,
                         cyberPayClient,
                         ledgerService,
-                        immediateTransactions());
+                        immediateTransactions(),
+                        events);
     }
 
     /**
@@ -535,6 +540,56 @@ class DonationServiceTest {
 
         assertThat(donation.getStatus()).isEqualTo(DonationStatus.PENDING);
         verify(ledgerService, never()).recordDonation(any());
+    }
+
+    // --- notifications -----------------------------------------------------------------
+
+    @Test
+    void settlementEmailsTheDonorAndTheCreator() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        ArgumentCaptor<Object> published = ArgumentCaptor.forClass(Object.class);
+        verify(events, times(2)).publishEvent(published.capture());
+
+        NotificationEvent.DonationReceipt receipt =
+                (NotificationEvent.DonationReceipt) published.getAllValues().get(0);
+        assertThat(receipt.recipient().userId()).isEqualTo(DONOR_ID);
+        assertThat(receipt.recipient().email()).isEqualTo("a@b.com");
+        assertThat(receipt.campaignId()).isEqualTo(CAMPAIGN_ID);
+        assertThat(receipt.amount()).isEqualByComparingTo(AMOUNT);
+
+        NotificationEvent.DonationReceived received =
+                (NotificationEvent.DonationReceived) published.getAllValues().get(1);
+        assertThat(received.recipient().email()).isEqualTo("creator@b.com");
+        assertThat(received.donorName()).isEqualTo("A B");
+        assertThat(received.campaignTitle()).isEqualTo("Title");
+    }
+
+    /** CyberPay redelivers hourly for 72 hours; that must not mean 72 receipts. */
+    @Test
+    void aRedeliveredSettlementSendsNothing() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        givenDonationById(donation);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void aFailedOrUndecidedSettlementSendsNothing() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Abandoned", BigDecimal.ZERO);
+
+        donationService.reconcilePending(DONATION_ID);
+
+        verifyNoInteractions(events);
     }
 
     // --- helpers ---------------------------------------------------------------------

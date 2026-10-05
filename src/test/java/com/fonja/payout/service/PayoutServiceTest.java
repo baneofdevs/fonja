@@ -11,6 +11,7 @@ import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
 import com.fonja.ledger.dto.EarningsResponse;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
 import com.fonja.payout.config.PayoutConfig;
 import com.fonja.payout.dto.BankAccountResponse;
 import com.fonja.payout.dto.LinkBankAccountRequest;
@@ -39,6 +40,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
@@ -64,6 +66,7 @@ class PayoutServiceTest {
     @Mock private LedgerService ledgerService;
     @Mock private UserService userService;
     @Mock private PayoutGateway payoutGateway;
+    @Mock private ApplicationEventPublisher events;
 
     private PayoutService payoutService;
 
@@ -77,7 +80,8 @@ class PayoutServiceTest {
                         userService,
                         payoutGateway,
                         new PayoutConfig(),
-                        immediateTransactions());
+                        immediateTransactions(),
+                        events);
 
         when(ledgerService.withdrawalFee()).thenReturn(FEE);
         when(userService.requireById(CREATOR_ID)).thenReturn(verifiedCreator());
@@ -336,6 +340,59 @@ class PayoutServiceTest {
 
         assertThat(payout.getStatus()).isEqualTo(PayoutStatus.FAILED);
         verify(ledgerService).reverseWithdrawal(payout);
+    }
+
+    // --- notifications ------------------------------------------------------------------
+
+    @Test
+    void requestingEmailsTheCreatorWithTheMaskedAccount() {
+        givenPayoutSaves();
+        when(bankAccountRepository.findByUserId(CREATOR_ID))
+                .thenReturn(Optional.of(verifiedAccount()));
+
+        payoutService.requestPayout(
+                CREATOR_ID, new RequestPayoutRequest(new BigDecimal("5000.00")));
+
+        NotificationEvent.WithdrawalRequested event =
+                capturePublished(NotificationEvent.WithdrawalRequested.class);
+        assertThat(event.recipient().userId()).isEqualTo(CREATOR_ID);
+        assertThat(event.amount()).isEqualByComparingTo("5000.00");
+        assertThat(event.fee()).isEqualByComparingTo(FEE);
+        assertThat(event.bankName()).isEqualTo("GTBank");
+        assertThat(event.maskedAccountNumber()).isEqualTo("******6789");
+    }
+
+    @Test
+    void markingPaidEmailsAConfirmation() {
+        PayoutRequest payout = processingPayout();
+        givenPayoutById(payout);
+
+        payoutService.markPaid(PAYOUT_ID);
+
+        NotificationEvent.WithdrawalSettled event =
+                capturePublished(NotificationEvent.WithdrawalSettled.class);
+        assertThat(event.paid()).isTrue();
+        assertThat(event.payoutId()).isEqualTo(PAYOUT_ID);
+    }
+
+    @Test
+    void markingFailedEmailsTheReason() {
+        PayoutRequest payout = processingPayout();
+        givenPayoutById(payout);
+
+        payoutService.markFailed(PAYOUT_ID, "Beneficiary account closed");
+
+        NotificationEvent.WithdrawalSettled event =
+                capturePublished(NotificationEvent.WithdrawalSettled.class);
+        assertThat(event.paid()).isFalse();
+        assertThat(event.failureReason()).isEqualTo("Beneficiary account closed");
+        assertThat(event.amount().add(event.fee())).isEqualByComparingTo("5200.00");
+    }
+
+    private <T> T capturePublished(Class<T> type) {
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(captor.capture());
+        return type.cast(captor.getValue());
     }
 
     @Test

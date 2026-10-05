@@ -18,6 +18,7 @@ import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
 import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
+import com.fonja.notification.event.NotificationEvent;
 import com.fonja.user.entity.AuthProvider;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -52,6 +54,7 @@ class CampaignServiceTest {
     @Mock private CampaignImageRepository campaignImageRepository;
     @Mock private VerificationRequestRepository verificationRequestRepository;
     @Mock private UserService userService;
+    @Mock private ApplicationEventPublisher events;
 
     private CampaignService campaignService;
 
@@ -62,7 +65,8 @@ class CampaignServiceTest {
                         campaignRepository,
                         campaignImageRepository,
                         verificationRequestRepository,
-                        userService);
+                        userService,
+                        events);
     }
 
     private User creator(boolean verified) {
@@ -266,6 +270,54 @@ class CampaignServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getResponseCode())
                 .isEqualTo(ResponseCode.NOT_FOUND);
+    }
+
+    // --- Review decisions notify the creator -----------------------------------------------
+
+    @Test
+    void approvalEmailsTheCreator() {
+        givenCampaign(campaign(creator(true), CampaignLifecycleState.PENDING_REVIEW));
+        givenNoImages();
+
+        campaignService.reviewCampaign(ADMIN_ID, CAMPAIGN_ID, true, null);
+
+        NotificationEvent.CampaignReviewed event =
+                capturePublished(NotificationEvent.CampaignReviewed.class);
+        assertThat(event.approved()).isTrue();
+        assertThat(event.recipient().userId()).isEqualTo(CREATOR_ID);
+        assertThat(event.campaignTitle()).isEqualTo("Title");
+    }
+
+    @Test
+    void rejectionEmailsTheCreatorWithTheReason() {
+        givenCampaign(campaign(creator(true), CampaignLifecycleState.PENDING_REVIEW));
+        givenNoImages();
+
+        campaignService.reviewCampaign(ADMIN_ID, CAMPAIGN_ID, false, "Story is too thin");
+
+        NotificationEvent.CampaignReviewed event =
+                capturePublished(NotificationEvent.CampaignReviewed.class);
+        assertThat(event.approved()).isFalse();
+        assertThat(event.reason()).isEqualTo("Story is too thin");
+    }
+
+    @Test
+    void autoRejectionEmailsTheBlockerAsTheReason() {
+        givenCampaign(campaign(creator(false), CampaignLifecycleState.PENDING_REVIEW));
+        givenNoImages();
+
+        campaignService.reviewCampaign(ADMIN_ID, CAMPAIGN_ID, true, null);
+
+        NotificationEvent.CampaignReviewed event =
+                capturePublished(NotificationEvent.CampaignReviewed.class);
+        assertThat(event.approved()).isFalse();
+        assertThat(event.reason()).isEqualTo("Creator is not a verified creator");
+    }
+
+    private <T> T capturePublished(Class<T> type) {
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(captor.capture());
+        return type.cast(captor.getValue());
     }
 
     /** creatorId comes off the entity, not the caller — an admin read must not claim ownership. */

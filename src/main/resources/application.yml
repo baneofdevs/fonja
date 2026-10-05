@@ -63,6 +63,22 @@ fonja:
     platform-fee-percent: ${FONJA_LEDGER_PLATFORM_FEE_PERCENT:7.00}
     withdrawal-fee: ${FONJA_LEDGER_WITHDRAWAL_FEE:200.00}
 
+  notification:
+    # Outbound email over SMTP. All three of host, username and password must be set or sending
+    # is disabled and every notification is logged as SKIPPED — the app still starts. Gmail:
+    # smtp.gmail.com:587, the account's address as username, and an App Password (not the login
+    # password; needs 2-step verification on the account).
+    smtp-host: ${FONJA_SMTP_HOST:}
+    smtp-port: ${FONJA_SMTP_PORT:587}
+    smtp-username: ${FONJA_SMTP_USERNAME:}
+    smtp-password: ${FONJA_SMTP_PASSWORD:}
+    # Gmail rewrites From to the account address unless it is a verified alias; leave blank to
+    # use the username.
+    from-address: ${FONJA_SMTP_FROM_ADDRESS:}
+    from-name: ${FONJA_SMTP_FROM_NAME:Fonja}
+    # The frontend's public URL, for the links inside each email. Blank means no links.
+    app-base-url: ${FONJA_APP_BASE_URL:}
+
   cyberpay:
     base-url: ${CYBERPAY_BASE_URL}
     # Also the webhook signing key — CyberPay HMAC-SHA512s each notification with it. No default:

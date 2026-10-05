@@ -12,6 +12,8 @@ import com.fonja.donation.entity.DonationStatus;
 import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.repository.DonationRepository;
 import com.fonja.ledger.service.LedgerService;
+import com.fonja.notification.event.NotificationEvent;
+import com.fonja.notification.event.Recipient;
 import com.fonja.user.entity.User;
 import com.fonja.user.service.UserService;
 import java.math.BigDecimal;
@@ -19,6 +21,7 @@ import java.security.SecureRandom;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,6 +51,7 @@ public class DonationService {
     private final CyberPayClient cyberPayClient;
     private final LedgerService ledgerService;
     private final TransactionTemplate transactionTemplate;
+    private final ApplicationEventPublisher events;
 
     public DonationService(
             DonationRepository donationRepository,
@@ -55,13 +59,15 @@ public class DonationService {
             UserService userService,
             CyberPayClient cyberPayClient,
             LedgerService ledgerService,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            ApplicationEventPublisher events) {
         this.donationRepository = donationRepository;
         this.campaignService = campaignService;
         this.userService = userService;
         this.cyberPayClient = cyberPayClient;
         this.ledgerService = ledgerService;
         this.transactionTemplate = transactionTemplate;
+        this.events = events;
     }
 
     /**
@@ -318,6 +324,10 @@ public class DonationService {
                 donation.getId(),
                 donation.getAmount(),
                 channel);
+
+        // Only on the transition, never on the duplicate-delivery path above: a webhook that is
+        // redelivered hourly for 72 hours must not mean 72 receipts.
+        notifySettled(donation);
         return SettlementOutcome.SETTLED;
     }
 
@@ -386,6 +396,27 @@ public class DonationService {
     }
 
     /** compareTo, not equals: {@code 500.00} and {@code 500.0} are the same amount of money. */
+    // Two emails per settlement: the donor's receipt and the creator's heads-up. Both are read off
+    // the entity graph here, inside the transaction, because the listener runs outside it.
+    private void notifySettled(Donation donation) {
+        Campaign campaign = donation.getCampaign();
+        events.publishEvent(
+                new NotificationEvent.DonationReceipt(
+                        Recipient.of(donation.getDonor()),
+                        campaign.getId(),
+                        campaign.getTitle(),
+                        donation.getAmount(),
+                        donation.getCurrency()));
+        events.publishEvent(
+                new NotificationEvent.DonationReceived(
+                        Recipient.of(campaign.getCreator()),
+                        campaign.getId(),
+                        campaign.getTitle(),
+                        donation.getDonor().getFullName(),
+                        donation.getAmount(),
+                        donation.getCurrency()));
+    }
+
     private static boolean amountsAgree(BigDecimal reported, BigDecimal expected) {
         return reported != null && reported.compareTo(expected) == 0;
     }
