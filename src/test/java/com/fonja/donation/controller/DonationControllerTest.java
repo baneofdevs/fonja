@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,10 +14,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fonja.common.config.SecurityConfig;
 import com.fonja.common.exception.GlobalExceptionHandler;
 import com.fonja.common.security.OAuth2LoginSuccessHandler;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.dto.DonationSummaryResponse;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
+import com.fonja.donation.entity.DonationStatus;
+import com.fonja.donation.entity.PaymentMethod;
 import com.fonja.donation.service.DonationService;
 import java.math.BigDecimal;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -94,6 +100,46 @@ class DonationControllerTest {
         // The donor id comes from the token's subject — there is no field in the request body that
         // could attribute a donation to someone else.
         verify(donationService).initiate(eqDonor(), any(InitiateDonationRequest.class));
+    }
+
+    @Test
+    void confirmIsScopedToTheSignedInDonor() throws Exception {
+        when(donationService.confirm(DONOR_ID, 12L))
+                .thenReturn(
+                        new DonationResponse(
+                                12L,
+                                CAMPAIGN_ID,
+                                "Title",
+                                null,
+                                new BigDecimal("5000.00"),
+                                "NGN",
+                                PaymentMethod.CARD,
+                                DonationStatus.SUCCESS,
+                                Instant.now()));
+
+        mockMvc.perform(post("/api/v1/donations/{id}/confirm", 12L).with(donor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseData.status").value("SUCCESS"));
+    }
+
+    @Test
+    void historyAndSummaryRequireAToken() throws Exception {
+        mockMvc.perform(get("/api/v1/donations/me")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/donations/received")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/donations/summary")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void summaryReturnsBothDirections() throws Exception {
+        when(donationService.summary(DONOR_ID))
+                .thenReturn(
+                        new DonationSummaryResponse(
+                                new BigDecimal("15000.00"), 3, BigDecimal.ZERO, 0, 0));
+
+        mockMvc.perform(get("/api/v1/donations/summary").with(donor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseData.totalGiven").value(15000.00))
+                .andExpect(jsonPath("$.responseData.donationsMade").value(3));
     }
 
     @Test

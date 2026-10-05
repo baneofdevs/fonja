@@ -1,11 +1,17 @@
 package com.fonja.donation.repository;
 
+import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.entity.Donation;
 import com.fonja.donation.entity.DonationStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DonationRepository extends JpaRepository<Donation, Long> {
 
@@ -35,4 +41,32 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
 
     /** How many donations the sweep has given up on, for the one warning line it logs per run. */
     long countByStatusAndCreatedAtBefore(DonationStatus status, Instant before);
+
+    /** A donor's own history, every status — a pending checkout belongs on their list too. */
+    @EntityGraph(attributePaths = "campaign")
+    Page<Donation> findByDonorIdOrderByCreatedAtDesc(Long donorId, Pageable pageable);
+
+    /** Settled donations to every campaign a creator owns, newest first. */
+    @EntityGraph(attributePaths = {"campaign", "donor"})
+    Page<Donation> findByCampaignCreatorIdAndStatusOrderByCreatedAtDesc(
+            Long creatorId, DonationStatus status, Pageable pageable);
+
+    @Query(
+            "select new com.fonja.donation.dto.DonationTotals(coalesce(sum(d.amount), 0), count(d))"
+                    + " from Donation d where d.donor.id = :userId and d.status = :status")
+    DonationTotals totalsGivenBy(
+            @Param("userId") Long userId, @Param("status") DonationStatus status);
+
+    @Query(
+            "select new com.fonja.donation.dto.DonationTotals(coalesce(sum(d.amount), 0), count(d))"
+                    + " from Donation d"
+                    + " where d.campaign.creator.id = :userId and d.status = :status")
+    DonationTotals totalsReceivedBy(
+            @Param("userId") Long userId, @Param("status") DonationStatus status);
+
+    @Query(
+            "select count(distinct d.donor.id) from Donation d"
+                    + " where d.campaign.creator.id = :userId and d.status = :status")
+    long countDistinctDonorsFor(
+            @Param("userId") Long userId, @Param("status") DonationStatus status);
 }

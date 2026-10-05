@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -21,6 +22,9 @@ import com.fonja.common.exception.ApiException;
 import com.fonja.common.response.ResponseCode;
 import com.fonja.donation.dto.CyberPayCheckout;
 import com.fonja.donation.dto.CyberPayTransaction;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.dto.DonationSummaryResponse;
+import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
 import com.fonja.donation.entity.Donation;
@@ -44,6 +48,8 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -590,6 +596,84 @@ class DonationServiceTest {
         donationService.reconcilePending(DONATION_ID);
 
         verifyNoInteractions(events);
+    }
+
+    // --- reads -------------------------------------------------------------------------
+
+    @Test
+    void aDonorsOwnListDoesNotRepeatTheirName() {
+        when(donationRepository.findByDonorIdOrderByCreatedAtDesc(eq(DONOR_ID), any()))
+                .thenReturn(new PageImpl<>(List.of(pending())));
+
+        DonationResponse shown =
+                donationService.myDonations(DONOR_ID, PageRequest.of(0, 20)).getContent().get(0);
+
+        assertThat(shown.donorName()).isNull();
+        assertThat(shown.campaignTitle()).isEqualTo("Title");
+        assertThat(shown.status()).isEqualTo(DonationStatus.PENDING);
+    }
+
+    @Test
+    void someoneElsesDonationReadsAsNotFound() {
+        givenDonationById(pending());
+
+        assertThatThrownBy(() -> donationService.getForDonor(99L, DONATION_ID))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getResponseCode())
+                .isEqualTo(ResponseCode.NOT_FOUND);
+    }
+
+    @Test
+    void confirmReQueriesAPendingDonationAndReturnsTheOutcome() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        givenCyberPaySays("Successful", AMOUNT);
+
+        DonationResponse result = donationService.confirm(DONOR_ID, DONATION_ID);
+
+        assertThat(result.status()).isEqualTo(DonationStatus.SUCCESS);
+        verify(ledgerService).recordDonation(donation);
+    }
+
+    @Test
+    void confirmLeavesADonationPendingWhenTheGatewayCannotAnswer() {
+        Donation donation = pending();
+        givenDonationById(donation);
+        when(cyberPayClient.requery(REFERENCE))
+                .thenThrow(ApiException.gatewayUnavailable("CyberPay unreachable"));
+
+        DonationResponse result = donationService.confirm(DONOR_ID, DONATION_ID);
+
+        assertThat(result.status()).isEqualTo(DonationStatus.PENDING);
+    }
+
+    @Test
+    void confirmIsAPlainReadOnceSettled() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        givenDonationById(donation);
+
+        donationService.confirm(DONOR_ID, DONATION_ID);
+
+        verifyNoInteractions(cyberPayClient);
+    }
+
+    @Test
+    void summaryCombinesGivenAndReceived() {
+        when(donationRepository.totalsGivenBy(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(new DonationTotals(new BigDecimal("15000.00"), 3));
+        when(donationRepository.totalsReceivedBy(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(new DonationTotals(new BigDecimal("250000.00"), 12));
+        when(donationRepository.countDistinctDonorsFor(DONOR_ID, DonationStatus.SUCCESS))
+                .thenReturn(9L);
+
+        DonationSummaryResponse summary = donationService.summary(DONOR_ID);
+
+        assertThat(summary.totalGiven()).isEqualByComparingTo("15000.00");
+        assertThat(summary.donationsMade()).isEqualTo(3);
+        assertThat(summary.totalReceived()).isEqualByComparingTo("250000.00");
+        assertThat(summary.donationsReceived()).isEqualTo(12);
+        assertThat(summary.distinctDonors()).isEqualTo(9);
     }
 
     // --- helpers ---------------------------------------------------------------------

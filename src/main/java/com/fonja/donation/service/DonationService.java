@@ -5,6 +5,9 @@ import com.fonja.campaign.service.CampaignService;
 import com.fonja.common.exception.ApiException;
 import com.fonja.donation.dto.CyberPayCheckout;
 import com.fonja.donation.dto.CyberPayTransaction;
+import com.fonja.donation.dto.DonationResponse;
+import com.fonja.donation.dto.DonationSummaryResponse;
+import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.dto.InitiateDonationRequest;
 import com.fonja.donation.dto.InitiateDonationResponse;
 import com.fonja.donation.entity.Donation;
@@ -22,6 +25,8 @@ import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -207,6 +212,77 @@ public class DonationService {
             throw ApiException.gatewayUnavailable(
                     "CyberPay has not reached a verdict on " + gatewayReference + " yet");
         }
+    }
+
+    // --- Reads ------------------------------------------------------------------------
+
+    /** Everything this user has given, any status, newest first. */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> myDonations(Long donorId, Pageable pageable) {
+        return donationRepository
+                .findByDonorIdOrderByCreatedAtDesc(donorId, pageable)
+                .map(DonationResponse::forDonor);
+    }
+
+    /** Settled donations to every campaign this user created, newest first. */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> receivedDonations(Long creatorId, Pageable pageable) {
+        return donationRepository
+                .findByCampaignCreatorIdAndStatusOrderByCreatedAtDesc(
+                        creatorId, DonationStatus.SUCCESS, pageable)
+                .map(DonationResponse::withDonor);
+    }
+
+    @Transactional(readOnly = true)
+    public DonationSummaryResponse summary(Long userId) {
+        DonationTotals given = donationRepository.totalsGivenBy(userId, DonationStatus.SUCCESS);
+        DonationTotals received =
+                donationRepository.totalsReceivedBy(userId, DonationStatus.SUCCESS);
+        long donors = donationRepository.countDistinctDonorsFor(userId, DonationStatus.SUCCESS);
+        return new DonationSummaryResponse(
+                given.amount(), given.count(), received.amount(), received.count(), donors);
+    }
+
+    /** One of the donor's own donations. Someone else's reads as not found. */
+    @Transactional(readOnly = true)
+    public DonationResponse getForDonor(Long donorId, Long donationId) {
+        return DonationResponse.forDonor(requireOwned(donorId, donationId));
+    }
+
+    /**
+     * The donor is back from checkout and wants to know if it worked. If the webhook has already
+     * landed this is just a read; if not, ask CyberPay now rather than making them wait for the
+     * hourly sweep. Either way the answer is whatever the donation's status is afterwards — a
+     * gateway that is unreachable leaves it PENDING, and the page says so.
+     */
+    @Transactional
+    public DonationResponse confirm(Long donorId, Long donationId) {
+        Donation donation = requireOwned(donorId, donationId);
+        if (donation.getStatus() == DonationStatus.PENDING) {
+            try {
+                reconcilePending(donationId);
+            } catch (ApiException e) {
+                log.info(
+                        "Donation id={} could not be confirmed on return: {}",
+                        donationId,
+                        e.getMessage());
+            }
+        }
+        return DonationResponse.forDonor(donationRepository.findById(donationId).orElseThrow());
+    }
+
+    private Donation requireOwned(Long donorId, Long donationId) {
+        Donation donation =
+                donationRepository
+                        .findById(donationId)
+                        .orElseThrow(
+                                () ->
+                                        ApiException.notFound(
+                                                "Donation " + donationId + " not found"));
+        if (!donation.getDonor().getId().equals(donorId)) {
+            throw ApiException.notFound("Donation " + donationId + " not found");
+        }
+        return donation;
     }
 
     /**
