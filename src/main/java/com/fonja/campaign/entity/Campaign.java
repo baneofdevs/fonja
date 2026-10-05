@@ -168,11 +168,8 @@ public class Campaign {
     }
 
     /**
-     * ACTIVE -> COMPLETED: goal reached.
-     *
-     * <p>Not yet called from anywhere: the caller is the donation path, which credits a campaign
-     * and completes it once the goal is met. That lands with the {@code donation} module (technical
-     * spec Day 3) — {@code DonationService} is still a stub.
+     * ACTIVE -> COMPLETED: goal reached. Called from {@code CampaignService.completeIfGoalReached}
+     * on the donation settlement path.
      */
     public void complete() {
         requireState(CampaignLifecycleState.ACTIVE);

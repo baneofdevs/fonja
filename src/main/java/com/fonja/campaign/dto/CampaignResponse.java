@@ -22,6 +22,9 @@ public class CampaignResponse {
 
     private Long creatorId;
 
+    /** The creator's display name, shown on every public card and detail page. */
+    private String creatorName;
+
     private String title;
 
     private String story;
@@ -41,10 +44,22 @@ public class CampaignResponse {
 
     private String currency;
 
+    /**
+     * Sum of settled donations, gross. Zero for a campaign that has taken nothing yet. Compared
+     * against {@link #goalAmount} by clients to render progress; the backend does not store a
+     * percentage because it would go stale.
+     */
+    private BigDecimal raisedAmount;
+
+    /** Number of settled donations — not distinct donors. */
+    private long donationCount;
+
     private String coverMediaPath;
 
-    /** Optional additional images, in display order. */
-    private List<String> images;
+    /** Optional additional images, in display order. Each carries its id so it can be removed. */
+    private List<CampaignImageResponse> images;
+
+    public record CampaignImageResponse(Long id, String path) {}
 
     private CampaignLifecycleState lifecycleState;
 

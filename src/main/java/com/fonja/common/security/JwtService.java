@@ -58,4 +58,13 @@ public class JwtService {
     public static Long userIdFrom(Jwt jwt) {
         return Long.valueOf(jwt.getSubject());
     }
+
+    /**
+     * The caller's id, or null when there is no caller: on a {@code permitAll} route the principal
+     * is absent for an anonymous request and present when a bearer token was sent anyway, and the
+     * endpoint needs to tell the two apart.
+     */
+    public static Long userIdFromOrNull(Jwt jwt) {
+        return jwt == null ? null : userIdFrom(jwt);
+    }
 }

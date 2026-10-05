@@ -79,10 +79,17 @@ public class SecurityConfig {
                                         // someone forgot to come back here.
                                         .requestMatchers("/api/v1/*/admin/**")
                                         .hasRole("ADMIN")
-                                        // Reads a visitor makes without a token: campaign images
-                                        // and the category list.
+                                        // The public feed and a campaign's page: the two reads a
+                                        // visitor needs before deciding to sign up. Only these two
+                                        // GETs — the numeric constraint on the id keeps /me and any
+                                        // future /something route authenticated — and a bearer
+                                        // token sent anyway is still decoded, so the same route
+                                        // can show a creator their own draft.
                                         .requestMatchers(
                                                 HttpMethod.GET,
+                                                "/api/v1/campaigns",
+                                                "/api/v1/campaigns/{campaignId:\\d+}",
+                                                "/api/v1/campaigns/{campaignId:\\d+}/donations",
                                                 "/api/v1/media/{mediaId:\\d+}",
                                                 "/api/v1/categories")
                                         .permitAll()

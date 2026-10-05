@@ -1,9 +1,11 @@
 package com.fonja.donation.repository;
 
+import com.fonja.donation.dto.CampaignFunding;
 import com.fonja.donation.dto.DonationTotals;
 import com.fonja.donation.entity.Donation;
 import com.fonja.donation.entity.DonationStatus;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -42,6 +44,21 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     /** How many donations the sweep has given up on, for the one warning line it logs per run. */
     long countByStatusAndCreatedAtBefore(DonationStatus status, Instant before);
 
+    /**
+     * Raised totals for a set of campaigns in one query, so a page of the public feed costs one
+     * aggregate rather than one per card. Campaigns with no settled donation are simply absent from
+     * the result — the caller fills those in as zero.
+     */
+    @Query(
+            "select new com.fonja.donation.dto.CampaignFunding("
+                    + "d.campaign.id, sum(d.amount), count(d))"
+                    + " from Donation d"
+                    + " where d.status = :status and d.campaign.id in :campaignIds"
+                    + " group by d.campaign.id")
+    List<CampaignFunding> fundingByCampaignIds(
+            @Param("campaignIds") Collection<Long> campaignIds,
+            @Param("status") DonationStatus status);
+
     /** A donor's own history, every status — a pending checkout belongs on their list too. */
     @EntityGraph(attributePaths = "campaign")
     Page<Donation> findByDonorIdOrderByCreatedAtDesc(Long donorId, Pageable pageable);
@@ -50,6 +67,11 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
     @EntityGraph(attributePaths = {"campaign", "donor"})
     Page<Donation> findByCampaignCreatorIdAndStatusOrderByCreatedAtDesc(
             Long creatorId, DonationStatus status, Pageable pageable);
+
+    /** A campaign's supporter list — settled only; nobody is thanked for an abandoned checkout. */
+    @EntityGraph(attributePaths = {"campaign", "donor"})
+    Page<Donation> findByCampaignIdAndStatusOrderByCreatedAtDesc(
+            Long campaignId, DonationStatus status, Pageable pageable);
 
     @Query(
             "select new com.fonja.donation.dto.DonationTotals(coalesce(sum(d.amount), 0), count(d))"

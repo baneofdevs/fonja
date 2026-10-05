@@ -551,7 +551,7 @@ class DonationServiceTest {
     // --- notifications -----------------------------------------------------------------
 
     @Test
-    void settlementEmailsTheDonorAndTheCreator() {
+    void settlementEmailsTheDonorAndTheCreatorAndChecksTheGoal() {
         Donation donation = pending();
         givenDonationById(donation);
         givenCyberPaySays("Successful", AMOUNT);
@@ -573,6 +573,7 @@ class DonationServiceTest {
         assertThat(received.recipient().email()).isEqualTo("creator@b.com");
         assertThat(received.donorName()).isEqualTo("A B");
         assertThat(received.campaignTitle()).isEqualTo("Title");
+        verify(campaignService).completeIfGoalReached(CAMPAIGN_ID);
     }
 
     /** CyberPay redelivers hourly for 72 hours; that must not mean 72 receipts. */
@@ -585,6 +586,7 @@ class DonationServiceTest {
         donationService.reconcilePending(DONATION_ID);
 
         verifyNoInteractions(events);
+        verify(campaignService, never()).completeIfGoalReached(any());
     }
 
     @Test
@@ -599,6 +601,39 @@ class DonationServiceTest {
     }
 
     // --- reads -------------------------------------------------------------------------
+
+    @Test
+    void supporterListIsGatedOnTheCampaignsVisibility() {
+        when(campaignService.requireVisibleCampaign(null, CAMPAIGN_ID))
+                .thenThrow(ApiException.notFound("Campaign 7 not found"));
+
+        assertThatThrownBy(
+                        () ->
+                                donationService.campaignDonations(
+                                        null, CAMPAIGN_ID, PageRequest.of(0, 20)))
+                .isInstanceOf(ApiException.class);
+        verify(donationRepository, never())
+                .findByCampaignIdAndStatusOrderByCreatedAtDesc(any(), any(), any());
+    }
+
+    @Test
+    void supporterListShowsSettledDonationsWithDonorNames() {
+        Donation donation = pending();
+        donation.markSuccessful(PaymentMethod.CARD);
+        when(campaignService.requireVisibleCampaign(null, CAMPAIGN_ID)).thenReturn(campaign());
+        when(donationRepository.findByCampaignIdAndStatusOrderByCreatedAtDesc(
+                        eq(CAMPAIGN_ID), eq(DonationStatus.SUCCESS), any()))
+                .thenReturn(new PageImpl<>(List.of(donation)));
+
+        DonationResponse shown =
+                donationService
+                        .campaignDonations(null, CAMPAIGN_ID, PageRequest.of(0, 20))
+                        .getContent()
+                        .get(0);
+
+        assertThat(shown.donorName()).isEqualTo("A B");
+        assertThat(shown.amount()).isEqualByComparingTo(AMOUNT);
+    }
 
     @Test
     void aDonorsOwnListDoesNotRepeatTheirName() {

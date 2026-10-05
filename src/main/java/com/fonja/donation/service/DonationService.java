@@ -233,6 +233,20 @@ public class DonationService {
                 .map(DonationResponse::withDonor);
     }
 
+    /**
+     * A campaign's supporters, for its public page. Gated on the campaign's own visibility so a
+     * draft's donor list is exactly as hidden as the draft.
+     */
+    @Transactional(readOnly = true)
+    public Page<DonationResponse> campaignDonations(
+            Long viewerId, Long campaignId, Pageable pageable) {
+        campaignService.requireVisibleCampaign(viewerId, campaignId);
+        return donationRepository
+                .findByCampaignIdAndStatusOrderByCreatedAtDesc(
+                        campaignId, DonationStatus.SUCCESS, pageable)
+                .map(DonationResponse::withDonor);
+    }
+
     @Transactional(readOnly = true)
     public DonationSummaryResponse summary(Long userId) {
         DonationTotals given = donationRepository.totalsGivenBy(userId, DonationStatus.SUCCESS);
@@ -404,6 +418,7 @@ public class DonationService {
         // Only on the transition, never on the duplicate-delivery path above: a webhook that is
         // redelivered hourly for 72 hours must not mean 72 receipts.
         notifySettled(donation);
+        campaignService.completeIfGoalReached(donation.getCampaign().getId());
         return SettlementOutcome.SETTLED;
     }
 

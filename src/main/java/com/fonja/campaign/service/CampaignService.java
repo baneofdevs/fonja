@@ -1,5 +1,6 @@
 package com.fonja.campaign.service;
 
+import com.fonja.campaign.dto.CampaignFeedSort;
 import com.fonja.campaign.dto.CampaignResponse;
 import com.fonja.campaign.dto.CategoryRef;
 import com.fonja.campaign.dto.CreateCampaignRequest;
@@ -12,6 +13,9 @@ import com.fonja.campaign.entity.IllegalCampaignStateException;
 import com.fonja.campaign.repository.CampaignImageRepository;
 import com.fonja.campaign.repository.CampaignRepository;
 import com.fonja.common.exception.ApiException;
+import com.fonja.donation.dto.CampaignFunding;
+import com.fonja.donation.entity.DonationStatus;
+import com.fonja.donation.repository.DonationRepository;
 import com.fonja.notification.event.NotificationEvent;
 import com.fonja.notification.event.Recipient;
 import com.fonja.user.entity.User;
@@ -23,11 +27,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +47,7 @@ public class CampaignService {
     private final CampaignRepository campaignRepository;
     private final CampaignImageRepository campaignImageRepository;
     private final VerificationRequestRepository verificationRequestRepository;
+    private final DonationRepository donationRepository;
     private final UserService userService;
     private final CategoryService categoryService;
     private final ApplicationEventPublisher events;
@@ -47,12 +56,14 @@ public class CampaignService {
             CampaignRepository campaignRepository,
             CampaignImageRepository campaignImageRepository,
             VerificationRequestRepository verificationRequestRepository,
+            DonationRepository donationRepository,
             UserService userService,
             CategoryService categoryService,
             ApplicationEventPublisher events) {
         this.campaignRepository = campaignRepository;
         this.campaignImageRepository = campaignImageRepository;
         this.verificationRequestRepository = verificationRequestRepository;
+        this.donationRepository = donationRepository;
         this.userService = userService;
         this.categoryService = categoryService;
         this.events = events;
@@ -93,15 +104,89 @@ public class CampaignService {
                         userId, CampaignLifecycleState.CANCELLED, pageable));
     }
 
-    // Gets one campaign by id. Owner-only for now; a cancelled (soft-deleted) campaign reads as
-    // not-found.
+    /**
+     * The public feed: campaigns anyone can browse and donate to, which is exactly the ACTIVE set.
+     *
+     * <p>Not owner-scoped and not authenticated — a visitor deciding whether to sign up is the
+     * whole point. COMPLETED and EXPIRED campaigns are readable by id but deliberately kept out of
+     * the feed: a feed is a list of things you can still give to.
+     *
+     * @param category a category slug; null or blank for every category
+     * @param q free-text match on title and location; null or blank for no filter
+     */
     @Transactional(readOnly = true)
-    public CampaignResponse getCampaignById(Long userId, Long campaignId) {
-        Campaign campaign = findOwnedCampaignOrThrow(userId, campaignId);
-        if (campaign.getLifecycleState() == CampaignLifecycleState.CANCELLED) {
+    public Page<CampaignResponse> publicFeed(
+            String category, String q, CampaignFeedSort sort, Pageable pageable) {
+        category = (category == null || category.isBlank()) ? null : category.trim().toLowerCase();
+        String query = (q == null || q.isBlank()) ? null : q.trim();
+        CampaignLifecycleState state = CampaignLifecycleState.ACTIVE;
+
+        Page<Campaign> page =
+                switch (sort) {
+                    case NEWEST ->
+                            campaignRepository.findPublicFeed(
+                                    state,
+                                    category,
+                                    query,
+                                    withSort(
+                                            pageable,
+                                            Sort.by(
+                                                    Sort.Order.desc("approvedAt"),
+                                                    Sort.Order.desc("id"))));
+                    case ENDING_SOON ->
+                            campaignRepository.findPublicFeed(
+                                    state,
+                                    category,
+                                    query,
+                                    withSort(
+                                            pageable,
+                                            Sort.by(
+                                                    Sort.Order.asc("deadline").nullsLast(),
+                                                    Sort.Order.desc("approvedAt"),
+                                                    Sort.Order.desc("id"))));
+                    case MOST_RAISED ->
+                            campaignRepository.findPublicFeedByMostRaised(
+                                    state, category, query, withSort(pageable, Sort.unsorted()));
+                };
+
+        return toResponsePage(page);
+    }
+
+    /**
+     * Gets one campaign by id.
+     *
+     * <p>Two audiences share this read. The creator sees their own campaign in any state except
+     * cancelled, so they can keep editing a draft or read a rejection reason. Everyone else —
+     * including no one at all, since {@code viewerId} is null for an anonymous visitor — sees only
+     * what {@link CampaignLifecycleState#isPubliclyVisible()} allows. Both refusals are a 404: a
+     * draft's existence is the creator's business until they launch it.
+     */
+    @Transactional(readOnly = true)
+    public CampaignResponse getCampaignById(Long viewerId, Long campaignId) {
+        return toResponse(requireVisibleCampaign(viewerId, campaignId));
+    }
+
+    /**
+     * The visibility rule behind {@link #getCampaignById}, as an entity, for other modules that
+     * list things belonging to a campaign — the donation module's supporter list must not reveal a
+     * draft's donors any more than the campaign itself.
+     *
+     * @param viewerId null for an anonymous visitor
+     * @throws ApiException notFound if the campaign does not exist or this viewer may not see it
+     */
+    @Transactional(readOnly = true)
+    public Campaign requireVisibleCampaign(Long viewerId, Long campaignId) {
+        Campaign campaign = findCampaignOrThrow(campaignId);
+
+        boolean isOwner = viewerId != null && campaign.getCreator().getId().equals(viewerId);
+        boolean visible =
+                isOwner
+                        ? campaign.getLifecycleState() != CampaignLifecycleState.CANCELLED
+                        : campaign.getLifecycleState().isPubliclyVisible();
+        if (!visible) {
             throw ApiException.notFound("Campaign " + campaignId + " not found");
         }
-        return toResponse(campaign);
+        return campaign;
     }
 
     /**
@@ -332,6 +417,48 @@ public class CampaignService {
     }
 
     /**
+     * ACTIVE -> COMPLETED once settled donations cover the goal. Called by the donation module
+     * right after it records a settlement, inside the same transaction.
+     *
+     * <p>Idempotent and quiet: a campaign that is not ACTIVE, or is still short of its goal, is
+     * left alone and {@code false} is returned. Donations already in flight when the goal is hit
+     * still settle normally — settlement never checks the campaign's state — so a donor
+     * mid-checkout is not refused after paying.
+     *
+     * @return true if this call completed the campaign
+     */
+    @Transactional
+    public boolean completeIfGoalReached(Long campaignId) {
+        Campaign campaign = findCampaignOrThrow(campaignId);
+        if (campaign.getLifecycleState() != CampaignLifecycleState.ACTIVE) {
+            return false;
+        }
+
+        CampaignFunding funding =
+                fundingByCampaign(List.of(campaignId))
+                        .getOrDefault(campaignId, CampaignFunding.none(campaignId));
+        if (funding.raisedAmount().compareTo(campaign.getGoalAmount()) < 0) {
+            return false;
+        }
+
+        transition(campaign::complete);
+        events.publishEvent(
+                new NotificationEvent.CampaignCompleted(
+                        Recipient.of(campaign.getCreator()),
+                        campaignId,
+                        campaign.getTitle(),
+                        funding.raisedAmount(),
+                        campaign.getGoalAmount(),
+                        campaign.getCurrency()));
+        log.info(
+                "Campaign id={} COMPLETED: raised {} against goal {}",
+                campaignId,
+                funding.raisedAmount(),
+                campaign.getGoalAmount());
+        return true;
+    }
+
+    /**
      * Hard-deletes a draft; soft-deletes (cancels) anything already submitted or live.
      *
      * <p>TODO (Day 3, with the donation module): cancelling a campaign that has already taken
@@ -373,41 +500,66 @@ public class CampaignService {
     // it
     // from the calling user would report the viewer as the creator on any non-owner read path.
     private CampaignResponse toResponse(Campaign campaign) {
-        List<String> images =
+        List<CampaignResponse.CampaignImageResponse> images =
                 campaignImageRepository
                         .findByCampaignIdOrderBySortOrderAsc(campaign.getId())
                         .stream()
-                        .map(CampaignImage::getFilePath)
+                        .map(CampaignService::toImage)
                         .toList();
-        return toResponse(campaign, images);
+        CampaignFunding funding =
+                fundingByCampaign(List.of(campaign.getId()))
+                        .getOrDefault(campaign.getId(), CampaignFunding.none(campaign.getId()));
+        return toResponse(campaign, images, funding);
     }
 
-    // Page variant: one image query for the whole page rather than one per campaign.
+    // Page variant: one image query and one funding query for the whole page rather than one of
+    // each per campaign.
     private Page<CampaignResponse> toResponsePage(Page<Campaign> campaigns) {
         List<Long> ids = campaigns.map(Campaign::getId).getContent();
         if (ids.isEmpty()) {
-            return campaigns.map(campaign -> toResponse(campaign, List.of()));
+            return campaigns.map(
+                    campaign ->
+                            toResponse(
+                                    campaign, List.of(), CampaignFunding.none(campaign.getId())));
         }
 
-        Map<Long, List<String>> imagesByCampaign = new LinkedHashMap<>();
+        Map<Long, List<CampaignResponse.CampaignImageResponse>> imagesByCampaign =
+                new LinkedHashMap<>();
         for (CampaignImage image :
                 campaignImageRepository.findByCampaignIdInOrderByCampaignIdAscSortOrderAsc(ids)) {
             imagesByCampaign
                     .computeIfAbsent(image.getCampaign().getId(), key -> new ArrayList<>())
-                    .add(image.getFilePath());
+                    .add(toImage(image));
         }
+        Map<Long, CampaignFunding> funding = fundingByCampaign(ids);
 
         return campaigns.map(
                 campaign ->
                         toResponse(
                                 campaign,
-                                imagesByCampaign.getOrDefault(campaign.getId(), List.of())));
+                                imagesByCampaign.getOrDefault(campaign.getId(), List.of()),
+                                funding.getOrDefault(
+                                        campaign.getId(), CampaignFunding.none(campaign.getId()))));
     }
 
-    private CampaignResponse toResponse(Campaign campaign, List<String> images) {
+    /** Settled totals keyed by campaign id; campaigns with nothing settled are absent. */
+    private Map<Long, CampaignFunding> fundingByCampaign(List<Long> campaignIds) {
+        return donationRepository.fundingByCampaignIds(campaignIds, DonationStatus.SUCCESS).stream()
+                .collect(Collectors.toMap(CampaignFunding::campaignId, Function.identity()));
+    }
+
+    private static CampaignResponse.CampaignImageResponse toImage(CampaignImage image) {
+        return new CampaignResponse.CampaignImageResponse(image.getId(), image.getFilePath());
+    }
+
+    private CampaignResponse toResponse(
+            Campaign campaign,
+            List<CampaignResponse.CampaignImageResponse> images,
+            CampaignFunding funding) {
         return CampaignResponse.builder()
                 .id(campaign.getId())
                 .creatorId(campaign.getCreator().getId())
+                .creatorName(campaign.getCreator().getFullName())
                 .title(campaign.getTitle())
                 .story(campaign.getStory())
                 .category(CategoryRef.from(campaign.getCategory()))
@@ -417,6 +569,8 @@ public class CampaignService {
                 .location(campaign.getLocation())
                 .goalAmount(campaign.getGoalAmount())
                 .currency(campaign.getCurrency())
+                .raisedAmount(funding.raisedAmount())
+                .donationCount(funding.donationCount())
                 .coverMediaPath(campaign.getCoverMediaPath())
                 .images(images)
                 .lifecycleState(campaign.getLifecycleState())
@@ -458,6 +612,12 @@ public class CampaignService {
             return "A cover image is required before it can go live";
         }
         return null;
+    }
+
+    // Re-issues a pageable with the feed's own ordering. The sort is decided here, not by the
+    // client, because a caller-supplied sort on a fetch-joined query could name any column.
+    private static Pageable withSort(Pageable pageable, Sort sort) {
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
     }
 
     // Finds a campaign by id, or throws not-found.
